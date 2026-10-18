@@ -77,7 +77,7 @@ fun LibraryScreen(
                 )
             } else {
                 LazyRow(
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     items(history.take(20), key = { it.id }) { video ->

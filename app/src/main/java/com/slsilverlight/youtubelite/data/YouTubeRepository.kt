@@ -81,13 +81,38 @@ class YouTubeRepository(context: Context, tokenProvider: () -> String?) {
 
     val hasApiKey: Boolean get() = BuildConfig.YOUTUBE_API_KEY.isNotBlank()
 
-    /** Trending videos for the phone's region. The API has no personalised Home feed. */
-    suspend fun homeFeed(showShorts: Boolean): List<Video> {
+    /**
+     * Trending videos for the phone's region. The API has no personalised Home feed, so with
+     * [favouriteCategories] (from the user's history) it mixes trending videos from those
+     * categories in first, taking turns between them, then fills up with general trending.
+     */
+    suspend fun homeFeed(showShorts: Boolean, favouriteCategories: List<String> = emptyList()): List<Video> = coroutineScope {
         check(hasApiKey) { "No API key" }
+        val general = async { trending(categoryId = null) }
+        val perCategory = favouriteCategories.map { id -> async { trending(categoryId = id, maxResults = 20) } }
+        val categoryLists = perCategory.awaitAll()
+        val mixed = buildList {
+            val longest = categoryLists.maxOfOrNull { it.size } ?: 0
+            for (i in 0 until longest) categoryLists.forEach { list -> list.getOrNull(i)?.let(::add) }
+            addAll(general.await())
+        }
+        mixed.distinctBy { it.id }.filter { showShorts || !it.isShort }
+    }
+
+    /** Trending videos in one category, for the category chips on Home. */
+    suspend fun categoryFeed(categoryId: String, showShorts: Boolean): List<Video> {
+        check(hasApiKey) { "No API key" }
+        return trending(categoryId).filter { showShorts || !it.isShort }
+    }
+
+    /** Some categories have no trending chart in some countries; YouTube answers 400/404 and we show none. */
+    private suspend fun trending(categoryId: String?, maxResults: Int = 50): List<Video> {
         val region = Locale.getDefault().country.takeIf { it.length == 2 } ?: "US"
-        return api.mostPopular(regionCode = region).items
-            .map(Video::from)
-            .filter { showShorts || !it.isShort }
+        return try {
+            api.mostPopular(regionCode = region, categoryId = categoryId, maxResults = maxResults).items.map(Video::from)
+        } catch (e: HttpException) {
+            if (categoryId != null && (e.code() == 400 || e.code() == 404)) emptyList() else throw e
+        }
     }
 
     /** Videos the signed-in user has liked, most recent first. */

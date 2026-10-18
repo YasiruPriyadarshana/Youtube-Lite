@@ -9,6 +9,7 @@ data class Video(
     val title: String,
     val channelTitle: String,
     val channelId: String = "",
+    val categoryId: String = "",
     val thumbnailUrl: String?,
     val publishedAt: Instant,
     val duration: Duration?,
@@ -33,6 +34,7 @@ data class Video(
             title = item.snippet.title,
             channelTitle = item.snippet.channelTitle,
             channelId = item.snippet.channelId,
+            categoryId = item.snippet.categoryId,
             thumbnailUrl = item.snippet.thumbnails.high?.url ?: item.snippet.thumbnails.medium?.url,
             publishedAt = runCatching { Instant.parse(item.snippet.publishedAt) }.getOrDefault(Instant.EPOCH),
             duration = item.contentDetails?.duration?.let { runCatching { Duration.parse(it) }.getOrNull() },
@@ -79,3 +81,21 @@ enum class Rating(val apiValue: String) {
         fun from(value: String) = entries.firstOrNull { it.apiValue == value } ?: None
     }
 }
+
+/** Names for YouTube's video category ids (they're the same in every country). */
+val VIDEO_CATEGORY_NAMES = mapOf(
+    "1" to "Film & Animation",
+    "2" to "Cars",
+    "10" to "Music",
+    "15" to "Pets & Animals",
+    "17" to "Sports",
+    "19" to "Travel",
+    "20" to "Gaming",
+    "22" to "Vlogs",
+    "23" to "Comedy",
+    "24" to "Entertainment",
+    "25" to "News",
+    "26" to "How-to & Style",
+    "27" to "Education",
+    "28" to "Science & Tech",
+)

@@ -5,6 +5,9 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -19,6 +22,7 @@ import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -45,6 +49,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.slsilverlight.youtubelite.data.AppSettings
+import com.slsilverlight.youtubelite.data.VIDEO_CATEGORY_NAMES
 
 private const val SEARCH_ROUTE = "search"
 private const val HISTORY_ROUTE = "library/history"
@@ -161,11 +166,16 @@ private fun MainScaffold(viewModel: MainViewModel, settings: AppSettings) {
         ) {
             composable(Tab.Home.route) {
                 LaunchedEffect(Unit) { viewModel.loadHomeIfNeeded() }
+                val homeFilter by viewModel.homeFilter.collectAsStateWithLifecycle()
+                val favourites by viewModel.favouriteCategories.collectAsStateWithLifecycle()
                 FeedScreen(
                     state = home,
                     emptyMessage = "No trending videos right now.",
                     onRefresh = viewModel::refreshHome,
                     onVideoClick = { navController.navigate("player/${it.id}") },
+                    header = {
+                        HomeChips(homeFilter, favourites, onSelect = { viewModel.selectHomeFilter(it) })
+                    },
                 )
             }
             composable(Tab.Subscriptions.route) {
@@ -329,5 +339,26 @@ private fun NavHostController.navigateToTab(tab: Tab) {
         popUpTo(graph.findStartDestination().id) { saveState = true }
         launchSingleTop = true
         restoreState = true
+    }
+}
+
+@Composable
+private fun HomeChips(selected: String, favourites: List<String>, onSelect: (String) -> Unit) {
+    // Until History knows your favourites, "For you" is just Trending, so offer popular categories instead.
+    val categories = favourites.ifEmpty { listOf("10", "20", "17", "24", "25", "28") }
+    val first = if (favourites.isEmpty()) listOf(HOME_FOR_YOU to "Trending")
+        else listOf(HOME_FOR_YOU to "For you", HOME_TRENDING to "Trending")
+    val chips = first + categories.map { it to (VIDEO_CATEGORY_NAMES[it] ?: it) }
+    LazyRow(
+        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        items(chips, key = { it.first }) { (id, label) ->
+            FilterChip(
+                selected = id == selected,
+                onClick = { onSelect(id) },
+                label = { Text(label) },
+            )
+        }
     }
 }

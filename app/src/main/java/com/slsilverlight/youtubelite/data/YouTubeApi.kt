@@ -62,6 +62,7 @@ interface YouTubeApi {
     @GET("videos")
     suspend fun mostPopular(
         @Query("regionCode") regionCode: String,
+        @Query("videoCategoryId") categoryId: String? = null,
         @Query("chart") chart: String = "mostPopular",
         @Query("part") part: String = "snippet,contentDetails,statistics",
         @Query("maxResults") maxResults: Int = 50,
@@ -160,6 +161,7 @@ data class VideoSnippet(
     val title: String = "",
     val channelTitle: String = "",
     val channelId: String = "",
+    val categoryId: String = "",
     val publishedAt: String = "",
     val thumbnails: Thumbnails = Thumbnails(),
     val liveBroadcastContent: String = "none",

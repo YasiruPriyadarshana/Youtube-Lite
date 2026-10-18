@@ -15,6 +15,7 @@ import com.slsilverlight.youtubelite.data.Playlist
 import com.slsilverlight.youtubelite.data.Rating
 import com.slsilverlight.youtubelite.data.SearchSuggestions
 import com.slsilverlight.youtubelite.data.SettingsStore
+import com.slsilverlight.youtubelite.data.VIDEO_CATEGORY_NAMES
 import com.slsilverlight.youtubelite.data.Video
 import com.slsilverlight.youtubelite.data.YouTubeRepository
 import kotlinx.coroutines.CancellationException
@@ -36,6 +37,9 @@ sealed interface AuthState {
     data class SignedOut(val consent: PendingIntent? = null, val error: String? = null) : AuthState
     data object SignedIn : AuthState
 }
+
+const val HOME_FOR_YOU = "for_you"
+const val HOME_TRENDING = "trending"
 
 data class ChannelPageState(
     val channelId: String? = null,
@@ -130,7 +134,39 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun refreshSubscriptions() = load(_subscriptions) { repo.subscriptionFeed(currentShowShorts()) }
 
-    fun refreshHome() = load(_home) { repo.homeFeed(currentShowShorts()) }
+    /** The chip selected on Home: [HOME_FOR_YOU], [HOME_TRENDING] or a category id. */
+    private val _homeFilter = MutableStateFlow(HOME_FOR_YOU)
+    val homeFilter: StateFlow<String> = _homeFilter.asStateFlow()
+
+    /** Up to three categories the user watches most in this app, most watched first. */
+    private val topCategories = historyStore.history
+        .map { videos ->
+            videos.map { it.categoryId }
+                .filter { it in VIDEO_CATEGORY_NAMES }
+                .groupingBy { it }.eachCount()
+                .entries.sortedByDescending { it.value }
+                .take(3).map { it.key }
+        }
+        .distinctUntilChanged()
+
+    val favouriteCategories: StateFlow<List<String>> = topCategories
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    fun selectHomeFilter(filter: String) {
+        if (filter == _homeFilter.value) return
+        _homeFilter.value = filter
+        _home.value = FeedState(loading = true)
+        refreshHome()
+    }
+
+    fun refreshHome() = load(_home) {
+        val showShorts = currentShowShorts()
+        when (val filter = _homeFilter.value) {
+            HOME_FOR_YOU -> repo.homeFeed(showShorts, topCategories.first())
+            HOME_TRENDING -> repo.homeFeed(showShorts)
+            else -> repo.categoryFeed(filter, showShorts)
+        }
+    }
 
     /** Comments for the player screen; null means comments are turned off for the video. */
     suspend fun comments(videoId: String): Result<List<Comment>?> = friendly { repo.comments(videoId) }

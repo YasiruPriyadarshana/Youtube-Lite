@@ -25,6 +25,18 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -144,6 +156,11 @@ private fun LibraryMessage(text: String) {
 }
 
 /** Every video watched in the app, with a button to clear the list. */
+private enum class HistoryFilter(val label: String) { All("All"), Videos("Videos"), Shorts("Shorts"), Music("Music") }
+
+/** Music is YouTube's video category 10. */
+private const val MUSIC_CATEGORY = "10"
+
 @Composable
 fun HistoryScreen(
     history: List<Video>,
@@ -151,15 +168,69 @@ fun HistoryScreen(
     onClear: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    var query by rememberSaveable { mutableStateOf("") }
+    var filter by rememberSaveable { mutableStateOf(HistoryFilter.All) }
+    val shown = remember(history, query, filter) {
+        val q = query.trim()
+        history
+            .filter {
+                when (filter) {
+                    HistoryFilter.All -> true
+                    HistoryFilter.Videos -> !it.isShort
+                    HistoryFilter.Shorts -> it.isShort
+                    HistoryFilter.Music -> it.categoryId == MUSIC_CATEGORY
+                }
+            }
+            .filter { q.isEmpty() || it.title.contains(q, ignoreCase = true) || it.channelTitle.contains(q, ignoreCase = true) }
+    }
+
     Column(modifier.fillMaxSize()) {
-        if (history.isNotEmpty()) {
-            TextButton(onClick = onClear, modifier = Modifier.padding(horizontal = 4.dp)) { Text("Clear history") }
-        }
-        FeedScreen(
-            state = FeedState(videos = history, loaded = true),
-            emptyMessage = "No history yet.",
-            onRefresh = {},
-            onVideoClick = onVideoClick,
+        OutlinedTextField(
+            value = query,
+            onValueChange = { query = it },
+            placeholder = { Text("Search watch history") },
+            leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+            trailingIcon = {
+                if (query.isNotEmpty()) {
+                    IconButton(onClick = { query = "" }) { Icon(Icons.Filled.Close, contentDescription = "Clear search") }
+                }
+            },
+            singleLine = true,
+            shape = RoundedCornerShape(24.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
         )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            LazyRow(
+                modifier = Modifier.weight(1f),
+                contentPadding = PaddingValues(horizontal = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                items(HistoryFilter.entries) { option ->
+                    FilterChip(
+                        selected = option == filter,
+                        onClick = { filter = option },
+                        label = { Text(option.label) },
+                    )
+                }
+            }
+            if (history.isNotEmpty()) {
+                TextButton(onClick = onClear) { Text("Clear all") }
+            }
+        }
+        val empty = when {
+            history.isEmpty() -> "No history yet."
+            query.isNotBlank() -> "No videos in your history match \"${query.trim()}\"."
+            else -> "No ${filter.label.lowercase()} in your history yet."
+        }
+        // A list of only Shorts reads better as a plain list than as one sideways shelf.
+        val shelf = LocalShortsShelf.current
+        CompositionLocalProvider(LocalShortsShelf provides shelf.copy(enabled = shelf.enabled && filter == HistoryFilter.All)) {
+            FeedScreen(
+                state = FeedState(videos = shown, loaded = true),
+                emptyMessage = empty,
+                onRefresh = {},
+                onVideoClick = onVideoClick,
+            )
+        }
     }
 }

@@ -1,7 +1,9 @@
 package com.slsilverlight.youtubelite.data
 
 import kotlinx.serialization.Serializable
+import retrofit2.Response
 import retrofit2.http.GET
+import retrofit2.http.POST
 import retrofit2.http.Headers
 import retrofit2.http.Query
 
@@ -26,6 +28,14 @@ interface YouTubeApi {
         @Query("part") part: String = "snippet,contentDetails,statistics",
         @Query("maxResults") maxResults: Int = 50,
     ): ListResponse<VideoItem>
+
+    /** The signed-in user's rating of a video: "like", "dislike" or "none". */
+    @GET("videos/getRating")
+    suspend fun getRating(@Query("id") id: String): RatingResponse
+
+    /** Likes, dislikes or clears the rating. Costs 50 quota units. */
+    @POST("videos/rate")
+    suspend fun rate(@Query("id") id: String, @Query("rating") rating: String): Response<Unit>
 
     @GET("playlists")
     suspend fun myPlaylists(
@@ -169,7 +179,11 @@ data class Thumbnail(val url: String)
 data class VideoContentDetails(val duration: String = "")
 
 @Serializable
-data class VideoStatistics(val viewCount: String? = null, val commentCount: String? = null)
+data class VideoStatistics(
+    val viewCount: String? = null,
+    val commentCount: String? = null,
+    val likeCount: String? = null,
+)
 
 @Serializable
 data class CommentThread(val id: String, val snippet: CommentThreadSnippet)
@@ -236,3 +250,9 @@ data class ChannelStatistics(
     val hiddenSubscriberCount: Boolean = false,
     val videoCount: String? = null,
 )
+
+@Serializable
+data class RatingResponse(val items: List<VideoRating> = emptyList())
+
+@Serializable
+data class VideoRating(val videoId: String, val rating: String = "none")

@@ -15,6 +15,7 @@ data class Video(
     val viewCount: Long?,
     val isLive: Boolean,
     val commentCount: Long? = null,
+    val likeCount: Long? = null,
 ) {
     companion object {
         fun from(item: VideoItem) = Video(
@@ -28,6 +29,7 @@ data class Video(
             viewCount = item.statistics?.viewCount?.toLongOrNull(),
             isLive = item.snippet.liveBroadcastContent == "live",
             commentCount = item.statistics?.commentCount?.toLongOrNull(),
+            likeCount = item.statistics?.likeCount?.toLongOrNull(),
         )
     }
 }
@@ -59,3 +61,11 @@ data class Channel(
     val subscriberCount: Long?,
     val videoCount: Long?,
 )
+
+enum class Rating(val apiValue: String) {
+    Like("like"), Dislike("dislike"), None("none");
+
+    companion object {
+        fun from(value: String) = entries.firstOrNull { it.apiValue == value } ?: None
+    }
+}

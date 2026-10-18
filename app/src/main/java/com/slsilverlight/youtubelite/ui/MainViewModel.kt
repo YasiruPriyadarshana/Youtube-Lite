@@ -11,6 +11,7 @@ import com.slsilverlight.youtubelite.data.Channel
 import com.slsilverlight.youtubelite.data.Comment
 import com.slsilverlight.youtubelite.data.HistoryStore
 import com.slsilverlight.youtubelite.data.Playlist
+import com.slsilverlight.youtubelite.data.Rating
 import com.slsilverlight.youtubelite.data.SearchSuggestions
 import com.slsilverlight.youtubelite.data.SettingsStore
 import com.slsilverlight.youtubelite.data.Video
@@ -131,6 +132,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Comments for the player screen; null means comments are turned off for the video. */
     suspend fun comments(videoId: String): Result<List<Comment>?> = friendly { repo.comments(videoId) }
+
+    val isSignedIn: Boolean get() = _authState.value == AuthState.SignedIn
+
+    /** Your like/dislike on a video, or null when signed out or it couldn't be read. */
+    suspend fun rating(videoId: String): Rating? =
+        if (!isSignedIn) null else friendly { withFreshTokenOn401 { repo.rating(videoId) } }.getOrNull()
+
+    suspend fun rate(videoId: String, rating: Rating): Result<Unit> =
+        friendly { withFreshTokenOn401 { repo.rate(videoId, rating) } }
 
     suspend fun replies(commentId: String): Result<List<Comment>> = friendly { repo.replies(commentId) }
 

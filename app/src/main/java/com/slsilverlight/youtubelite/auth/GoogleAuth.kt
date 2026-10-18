@@ -15,7 +15,7 @@ import java.net.URL
 import java.net.URLEncoder
 
 /**
- * Google sign-in for read-only YouTube access.
+ * Google sign-in for YouTube access.
  *
  * Nothing secret lives in the app: Google recognises it by its package name and the SHA-1 of
  * the signing key, which you register as an Android OAuth client in Google Cloud (see README).
@@ -31,7 +31,7 @@ class GoogleAuth(private val context: Context) {
     private val client = Identity.getAuthorizationClient(context)
 
     private val request = AuthorizationRequest.builder()
-        .setRequestedScopes(listOf(Scope(YOUTUBE_READONLY)))
+        .setRequestedScopes(listOf(Scope(YOUTUBE)))
         .build()
 
     /** Gets a fresh access token, or the consent screen to show if the user hasn't signed in yet. */
@@ -73,6 +73,7 @@ class GoogleAuth(private val context: Context) {
     }
 
     private companion object {
-        const val YOUTUBE_READONLY = "https://www.googleapis.com/auth/youtube.readonly"
+        // Full YouTube access: needed to like and dislike videos, on top of reading your feeds.
+        const val YOUTUBE = "https://www.googleapis.com/auth/youtube"
     }
 }

@@ -19,7 +19,8 @@ signs it. Home works without signing in, so it needs an **API key**, which you k
    - App name: YouTube Lite, your email as support and developer contact.
    - Audience: **External**, and leave it in **Testing**.
    - Under *Test users*, add your own Gmail and each friend's Gmail (up to 100).
-   - Under *Data access* (scopes), add `.../auth/youtube.readonly`.
+   - Under *Data access* (scopes), add `.../auth/youtube` (needed so the app can like and dislike
+     videos as well as read your feeds).
 5. **Create the client.** *Clients* (or *Credentials* > *Create credentials* > *OAuth client ID*):
    - Application type: **Android**
    - Package name: `com.slsilverlight.youtubelite`
@@ -43,6 +44,7 @@ the APK. It's signed with your debug key, which matches the SHA-1 you registered
 
 - **Weekly sign-in:** while the Google project is in Testing mode, Google signs everyone out
   about every 7 days. Just sign in again.
+- **Likes cost quota too:** each like or dislike uses 50 units.
 - **Shared daily quota:** the API allows 10,000 units a day for everyone using the app together.
   A Subscriptions refresh costs roughly one unit per subscribed channel.
   Each search costs 101 units, so together everyone gets about 90 searches a day.

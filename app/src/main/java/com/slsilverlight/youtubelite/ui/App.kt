@@ -254,6 +254,9 @@ private fun MainScaffold(viewModel: MainViewModel, settings: AppSettings) {
                         viewModel.openChannel(id)
                         navController.navigate("channel/$id")
                     },
+                    isSignedIn = authState == AuthState.SignedIn,
+                    loadRating = { viewModel.rating(it) },
+                    rate = { id, rating -> viewModel.rate(id, rating) },
                 )
             }
             composable(CHANNEL_ROUTE) {

@@ -119,6 +119,14 @@ class YouTubeRepository(context: Context, tokenProvider: () -> String?) {
         return ids.mapNotNull { byId[it] }.filter { showShorts || !it.looksLikeShort() }
     }
 
+    suspend fun rating(videoId: String): Rating =
+        Rating.from(api.getRating(videoId).items.firstOrNull()?.rating ?: "none")
+
+    suspend fun rate(videoId: String, rating: Rating) {
+        val response = api.rate(videoId, rating.apiValue)
+        if (!response.isSuccessful) throw HttpException(response)
+    }
+
     /** Replies to a top-level comment, oldest first like YouTube shows them. */
     suspend fun replies(commentId: String): List<Comment> {
         check(hasApiKey) { "No API key" }

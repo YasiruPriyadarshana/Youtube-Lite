@@ -15,6 +15,22 @@ import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.widget.FrameLayout
+import android.widget.Toast
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.OpenInNew
+import androidx.compose.material.icons.filled.ThumbDown
+import androidx.compose.material.icons.filled.ThumbUp
+import androidx.compose.material.icons.outlined.Share
+import androidx.compose.material.icons.outlined.ThumbDown
+import androidx.compose.material.icons.outlined.ThumbUp
+import androidx.compose.material3.Icon
+import androidx.compose.material3.VerticalDivider
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -36,7 +52,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -61,6 +76,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import coil.compose.AsyncImage
 import com.slsilverlight.youtubelite.data.Channel
 import com.slsilverlight.youtubelite.data.Comment
+import com.slsilverlight.youtubelite.data.Rating
 import com.slsilverlight.youtubelite.data.Video
 import kotlinx.coroutines.launch
 
@@ -81,6 +97,9 @@ fun PlayerScreen(
     loadReplies: suspend (String) -> Result<List<Comment>>,
     loadChannel: suspend (String) -> Channel?,
     onChannelClick: (String) -> Unit,
+    isSignedIn: Boolean,
+    loadRating: suspend (String) -> Rating?,
+    rate: suspend (String, Rating) -> Result<Unit>,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -183,14 +202,14 @@ fun PlayerScreen(
                 }
             }
             item {
-                OutlinedButton(
-                    onClick = {
-                        context.startActivity(
-                            Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/watch?v=$videoId"))
-                        )
-                    },
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-                ) { Text("Open in YouTube") }
+                ActionRow(
+                    videoId = videoId,
+                    title = video?.title,
+                    likeCount = video?.likeCount,
+                    isSignedIn = isSignedIn,
+                    loadRating = loadRating,
+                    rate = rate,
+                )
             }
             item {
                 CommentsCard(
@@ -216,6 +235,114 @@ fun PlayerScreen(
                     onChannelClick(it)
                 },
             )
+        }
+    }
+}
+
+/** Like / dislike / share / open-in-YouTube buttons, styled like the YouTube app's pills. */
+@Composable
+private fun ActionRow(
+    videoId: String,
+    title: String?,
+    likeCount: Long?,
+    isSignedIn: Boolean,
+    loadRating: suspend (String) -> Rating?,
+    rate: suspend (String, Rating) -> Result<Unit>,
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    // The rating YouTube had when the screen opened, and the one shown now.
+    var original by remember(videoId) { mutableStateOf(Rating.None) }
+    var current by remember(videoId) { mutableStateOf(Rating.None) }
+    LaunchedEffect(videoId, isSignedIn) {
+        loadRating(videoId)?.let { original = it; current = it }
+    }
+
+    fun toggle(target: Rating) {
+        if (!isSignedIn) {
+            Toast.makeText(context, "Sign in on the Subscriptions tab to like videos", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val previous = current
+        val next = if (current == target) Rating.None else target
+        current = next
+        scope.launch {
+            rate(videoId, next).onFailure {
+                current = previous
+                Toast.makeText(context, it.message ?: "Couldn't save your rating", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    val shownLikes = likeCount?.let {
+        it - (if (original == Rating.Like) 1 else 0) + (if (current == Rating.Like) 1 else 0)
+    }
+
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
+            .padding(horizontal = 12.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Surface(shape = RoundedCornerShape(50), color = MaterialTheme.colorScheme.surfaceVariant) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    Modifier
+                        .clickable { toggle(Rating.Like) }
+                        .padding(start = 14.dp, end = 12.dp, top = 8.dp, bottom = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        if (current == Rating.Like) Icons.Filled.ThumbUp else Icons.Outlined.ThumbUp,
+                        contentDescription = "Like",
+                        modifier = Modifier.size(20.dp),
+                    )
+                    if (shownLikes != null) {
+                        Spacer(Modifier.width(6.dp))
+                        Text(formatCompact(shownLikes), style = MaterialTheme.typography.labelLarge)
+                    }
+                }
+                VerticalDivider(Modifier.height(20.dp))
+                Box(
+                    Modifier
+                        .clickable { toggle(Rating.Dislike) }
+                        .padding(start = 12.dp, end = 14.dp, top = 8.dp, bottom = 8.dp),
+                ) {
+                    Icon(
+                        if (current == Rating.Dislike) Icons.Filled.ThumbDown else Icons.Outlined.ThumbDown,
+                        contentDescription = "Dislike",
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
+            }
+        }
+        PillButton(Icons.Outlined.Share, "Share") {
+            val url = "https://youtu.be/$videoId"
+            val send = Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_TEXT, url)
+                title?.let { putExtra(Intent.EXTRA_SUBJECT, it) }
+            }
+            context.startActivity(Intent.createChooser(send, "Share video"))
+        }
+        PillButton(Icons.AutoMirrored.Outlined.OpenInNew, "YouTube") {
+            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/watch?v=$videoId")))
+        }
+    }
+}
+
+@Composable
+private fun PillButton(icon: ImageVector, label: String, onClick: () -> Unit) {
+    Surface(shape = RoundedCornerShape(50), color = MaterialTheme.colorScheme.surfaceVariant) {
+        Row(
+            Modifier.clickable(onClick = onClick).padding(horizontal = 14.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp))
+            Spacer(Modifier.width(6.dp))
+            Text(label, style = MaterialTheme.typography.labelLarge)
         }
     }
 }

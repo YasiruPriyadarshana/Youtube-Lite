@@ -107,30 +107,7 @@ fun PlayerScreen(
     var playerError by remember { mutableStateOf<Int?>(null) }
     var showComments by remember { mutableStateOf(false) }
 
-    val webView = remember {
-        WebView(context).apply {
-            layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
-            // Video frames are drawn on the GPU; without a hardware layer some phones play sound over a black picture.
-            setLayerType(View.LAYER_TYPE_HARDWARE, null)
-            setBackgroundColor(android.graphics.Color.BLACK)
-            settings.javaScriptEnabled = true
-            settings.domStorageEnabled = true
-            settings.mediaPlaybackRequiresUserGesture = false
-            webChromeClient = FullscreenChromeClient(context.findActivity())
-            val main = Handler(Looper.getMainLooper())
-            addJavascriptInterface(object {
-                @JavascriptInterface
-                fun onError(code: Int) {
-                    main.post { playerError = code }
-                }
-            }, "AndroidPlayer")
-            val origin = "https://${context.packageName}"
-            loadDataWithBaseURL(origin, playerHtml(videoId, origin), "text/html", "utf-8", null)
-        }
-    }
-    DisposableEffect(Unit) {
-        onDispose { webView.destroy() }
-    }
+    val webView = rememberPlayerWebView(videoId, onPlayerError = { playerError = it })
 
     val comments by produceState<CommentsState>(CommentsState.Loading, videoId) {
         value = loadComments(videoId).fold(
@@ -281,7 +258,8 @@ private fun ActionRow(
     val shownLikes = likeCount?.let {
         it - (if (original == Rating.Like) 1 else 0) + (if (current == Rating.Like) 1 else 0)
     }
-    val shownDislikes = dislikeEstimate?.let {
+    // A zero usually means the estimate service has no data for the video, so it's hidden too.
+    val shownDislikes = dislikeEstimate?.takeIf { it > 0 }?.let {
         (it - (if (original == Rating.Dislike) 1 else 0) + (if (current == Rating.Dislike) 1 else 0)).coerceAtLeast(0)
     }
 
@@ -499,6 +477,41 @@ private fun CommentRow(comment: Comment, onAuthorClick: (String) -> Unit, small:
     }
 }
 
+/**
+ * A WebView running YouTube's official embedded player for [videoId]. It's destroyed when it
+ * leaves the screen, which also stops playback.
+ */
+@SuppressLint("SetJavaScriptEnabled")
+@Composable
+fun rememberPlayerWebView(videoId: String, loop: Boolean = false, onPlayerError: (Int) -> Unit = {}): WebView {
+    val context = LocalContext.current
+    val webView = remember(videoId) {
+        WebView(context).apply {
+            layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+            // Video frames are drawn on the GPU; without a hardware layer some phones play sound over a black picture.
+            setLayerType(View.LAYER_TYPE_HARDWARE, null)
+            setBackgroundColor(android.graphics.Color.BLACK)
+            settings.javaScriptEnabled = true
+            settings.domStorageEnabled = true
+            settings.mediaPlaybackRequiresUserGesture = false
+            webChromeClient = FullscreenChromeClient(context.findActivity())
+            val main = Handler(Looper.getMainLooper())
+            addJavascriptInterface(object {
+                @JavascriptInterface
+                fun onError(code: Int) {
+                    main.post { onPlayerError(code) }
+                }
+            }, "AndroidPlayer")
+            val origin = "https://${context.packageName}"
+            loadDataWithBaseURL(origin, playerHtml(videoId, origin, loop), "text/html", "utf-8", null)
+        }
+    }
+    DisposableEffect(webView) {
+        onDispose { webView.destroy() }
+    }
+    return webView
+}
+
 /** Lets the player's full-screen button cover the whole screen in landscape. */
 private class FullscreenChromeClient(private val activity: Activity?) : WebChromeClient() {
     private var customView: View? = null
@@ -527,7 +540,7 @@ private tailrec fun Context.findActivity(): Activity? = when (this) {
     else -> null
 }
 
-private fun playerHtml(videoId: String, origin: String) = """
+private fun playerHtml(videoId: String, origin: String, loop: Boolean) = """
 <!DOCTYPE html>
 <html>
 <head>
@@ -545,7 +558,7 @@ private fun playerHtml(videoId: String, origin: String) = """
         height: '100%',
         videoId: '$videoId',
         host: 'https://www.youtube.com',
-        playerVars: { autoplay: 1, playsinline: 1, rel: 0, origin: '$origin' },
+        playerVars: { autoplay: 1, playsinline: 1, rel: 0, origin: '$origin'${if (loop) ", loop: 1, playlist: '$videoId'" else ""} },
         events: {
           onReady: function (e) { e.target.playVideo(); },
           onError: function (e) { AndroidPlayer.onError(e.data); }

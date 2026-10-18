@@ -203,6 +203,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun removeRecentSearch(query: String) = viewModelScope.launch { searchSuggestions.removeRecent(query) }
 
+    /** The Shorts the Shorts player swipes through, and where it starts. */
+    private val _shorts = MutableStateFlow<Pair<List<Video>, Int>>(emptyList<Video>() to 0)
+    val shorts: StateFlow<Pair<List<Video>, Int>> = _shorts.asStateFlow()
+
+    fun openShorts(shorts: List<Video>, start: Video) {
+        _shorts.value = shorts to shorts.indexOfFirst { it.id == start.id }.coerceAtLeast(0)
+    }
+
     fun addToHistory(video: Video) = viewModelScope.launch { historyStore.add(video) }
 
     fun clearHistory() = viewModelScope.launch { historyStore.clear() }

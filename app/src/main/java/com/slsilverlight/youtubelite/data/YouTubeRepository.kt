@@ -75,7 +75,7 @@ class YouTubeRepository(context: Context, tokenProvider: () -> String?) {
 
         videoDetails(newest.map { it.videoId })
             .distinctBy { it.id }
-            .filterNot { it.id in needsDurationCheck && it.looksLikeShort() }
+            .filterNot { it.id in needsDurationCheck && it.isShort }
             .sortedByDescending { it.publishedAt }
     }
 
@@ -87,7 +87,7 @@ class YouTubeRepository(context: Context, tokenProvider: () -> String?) {
         val region = Locale.getDefault().country.takeIf { it.length == 2 } ?: "US"
         return api.mostPopular(regionCode = region).items
             .map(Video::from)
-            .filter { showShorts || !it.looksLikeShort() }
+            .filter { showShorts || !it.isShort }
     }
 
     /** Videos the signed-in user has liked, most recent first. */
@@ -116,7 +116,7 @@ class YouTubeRepository(context: Context, tokenProvider: () -> String?) {
         val ids = api.search(query = query).items.mapNotNull { it.id.videoId }.distinct()
         if (ids.isEmpty()) return emptyList()
         val byId = api.publicVideosById(ids = ids.joinToString(",")).items.map(Video::from).associateBy { it.id }
-        return ids.mapNotNull { byId[it] }.filter { showShorts || !it.looksLikeShort() }
+        return ids.mapNotNull { byId[it] }.filter { showShorts || !it.isShort }
     }
 
     suspend fun rating(videoId: String): Rating =
@@ -171,7 +171,7 @@ class YouTubeRepository(context: Context, tokenProvider: () -> String?) {
         if (ids.isEmpty()) return emptyList()
         val byId = api.publicVideosById(ids = ids.joinToString(",")).items.map(Video::from).associateBy { it.id }
         return ids.mapNotNull { byId[it] }
-            .filterNot { needsShortsCheck && it.looksLikeShort() }
+            .filterNot { needsShortsCheck && it.isShort }
             .sortedByDescending { it.publishedAt }
     }
 
@@ -255,10 +255,4 @@ class YouTubeRepository(context: Context, tokenProvider: () -> String?) {
         const val UPLOADS_PER_CHANNEL = 5
         const val MAX_FEED_VIDEOS = 150
     }
-}
-
-/** Fallback Shorts test for when the long-form playlist isn't available: 3 minutes or less. */
-private fun Video.looksLikeShort(): Boolean {
-    val d = duration ?: return false
-    return !isLive && d > Duration.ZERO && d <= Duration.ofMinutes(3)
 }

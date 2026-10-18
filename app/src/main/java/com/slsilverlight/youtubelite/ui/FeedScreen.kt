@@ -26,8 +26,79 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material3.Icon
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.graphics.Brush
 import coil.compose.AsyncImage
 import com.slsilverlight.youtubelite.data.Video
+
+/** Whether feeds show a Shorts row, and what tapping a Short does. Provided once by the app. */
+data class ShortsShelfConfig(
+    val enabled: Boolean = false,
+    val onOpen: (shorts: List<Video>, start: Video) -> Unit = { _, _ -> },
+)
+
+val LocalShortsShelf = staticCompositionLocalOf { ShortsShelfConfig() }
+
+private const val SHELF_POSITION = 3
+
+@Composable
+private fun ShortsShelf(shorts: List<Video>, onClick: (Video) -> Unit) {
+    Column {
+        Row(Modifier.padding(horizontal = 12.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Filled.Bolt, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+            Spacer(Modifier.width(6.dp))
+            Text("Shorts", style = MaterialTheme.typography.titleMedium)
+        }
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            items(shorts, key = { it.id }) { video ->
+                Box(
+                    Modifier
+                        .width(150.dp)
+                        .aspectRatio(9f / 16f)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Color.DarkGray)
+                        .clickable { onClick(video) },
+                ) {
+                    // YouTube's Shorts thumbnails are landscape crops; centre-cropping keeps the subject.
+                    AsyncImage(
+                        model = video.thumbnailUrl,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                    Column(
+                        Modifier
+                            .align(Alignment.BottomStart)
+                            .fillMaxWidth()
+                            .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.8f))))
+                            .padding(8.dp),
+                    ) {
+                        Text(
+                            video.title,
+                            color = Color.White,
+                            style = MaterialTheme.typography.labelLarge,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        video.viewCount?.let {
+                            Text(formatViews(it), color = Color.White.copy(alpha = 0.8f), style = MaterialTheme.typography.labelSmall)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -39,6 +110,9 @@ fun FeedScreen(
     modifier: Modifier = Modifier,
     header: (@Composable () -> Unit)? = null,
 ) {
+    // Read here: the LazyColumn's content block below isn't composable, so it can't read locals.
+    val shelf = LocalShortsShelf.current
+    val shorts = if (shelf.enabled) state.videos.filter { it.isShort } else emptyList()
     PullToRefreshBox(
         isRefreshing = state.loading,
         onRefresh = onRefresh,
@@ -55,8 +129,20 @@ fun FeedScreen(
             if (state.loaded && state.error == null && state.videos.isEmpty()) {
                 item { Message(emptyMessage) }
             }
-            items(state.videos, key = { it.id }) { video ->
-                VideoRow(video, onClick = { onVideoClick(video) })
+            if (shorts.isEmpty()) {
+                items(state.videos, key = { it.id }) { video ->
+                    VideoRow(video, onClick = { onVideoClick(video) })
+                }
+            } else {
+                // Like the YouTube app: a few regular videos, then a Shorts row, then the rest.
+                val regular = state.videos.filterNot { it.isShort }
+                items(regular.take(SHELF_POSITION), key = { it.id }) { video ->
+                    VideoRow(video, onClick = { onVideoClick(video) })
+                }
+                item(key = "shorts-shelf") { ShortsShelf(shorts, onClick = { shelf.onOpen(shorts, it) }) }
+                items(regular.drop(SHELF_POSITION), key = { it.id }) { video ->
+                    VideoRow(video, onClick = { onVideoClick(video) })
+                }
             }
             item { Spacer(Modifier.height(8.dp)) }
         }

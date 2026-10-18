@@ -17,6 +17,16 @@ data class Video(
     val commentCount: Long? = null,
     val likeCount: Long? = null,
 ) {
+    /**
+     * Whether this is probably a Short: 3 minutes or less and not live. The API doesn't flag
+     * Shorts, so this is a duration check; a short regular video can be counted as one.
+     */
+    val isShort: Boolean
+        get() {
+            val d = duration ?: return false
+            return !isLive && d > Duration.ZERO && d <= Duration.ofMinutes(3)
+        }
+
     companion object {
         fun from(item: VideoItem) = Video(
             id = item.id,

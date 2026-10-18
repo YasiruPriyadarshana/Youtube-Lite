@@ -28,6 +28,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -50,6 +51,7 @@ private const val HISTORY_ROUTE = "library/history"
 private const val LIKED_ROUTE = "library/liked"
 private const val PLAYLIST_ROUTE = "library/playlist/{id}/{title}"
 private const val CHANNEL_ROUTE = "channel/{id}"
+private const val SHORTS_ROUTE = "shorts"
 
 private enum class Tab(val route: String, val label: String, val icon: ImageVector) {
     Home("home", "Home", Icons.Filled.Home),
@@ -80,6 +82,7 @@ private fun MainScaffold(viewModel: MainViewModel, settings: AppSettings) {
     val playlists by viewModel.playlists.collectAsStateWithLifecycle()
     val libraryList by viewModel.libraryList.collectAsStateWithLifecycle()
     val channelPage by viewModel.channelPage.collectAsStateWithLifecycle()
+    val shorts by viewModel.shorts.collectAsStateWithLifecycle()
 
     val navController = rememberNavController()
     // Open on Home when it's switched on, otherwise on Subscriptions.
@@ -93,7 +96,15 @@ private fun MainScaffold(viewModel: MainViewModel, settings: AppSettings) {
         if (!settings.showHome && currentRoute == Tab.Home.route) navController.navigateToTab(Tab.Subscriptions)
     }
 
-    val onPlayerScreen = currentRoute?.startsWith("player") == true
+    // The player and Shorts are full-screen, without the top and bottom bars.
+    val onPlayerScreen = currentRoute?.startsWith("player") == true || currentRoute == SHORTS_ROUTE
+    val shortsShelf = ShortsShelfConfig(
+        enabled = settings.showShorts,
+        onOpen = { list, start ->
+            viewModel.openShorts(list, start)
+            navController.navigate(SHORTS_ROUTE)
+        },
+    )
     Scaffold(
         topBar = {
             if (!onPlayerScreen) {
@@ -142,6 +153,7 @@ private fun MainScaffold(viewModel: MainViewModel, settings: AppSettings) {
             }
         },
     ) { padding ->
+        CompositionLocalProvider(LocalShortsShelf provides shortsShelf) {
         NavHost(
             navController = navController,
             startDestination = startRoute,
@@ -269,6 +281,19 @@ private fun MainScaffold(viewModel: MainViewModel, settings: AppSettings) {
                     onVideoClick = { navController.navigate("player/${it.id}") },
                 )
             }
+            composable(SHORTS_ROUTE) {
+                ShortsScreen(
+                    shorts = shorts.first,
+                    startIndex = shorts.second,
+                    onBack = { navController.popBackStack() },
+                    onChannelClick = { id ->
+                        viewModel.openChannel(id)
+                        navController.navigate("channel/$id")
+                    },
+                    onWatched = { viewModel.addToHistory(it) },
+                )
+            }
+        }
         }
     }
 }

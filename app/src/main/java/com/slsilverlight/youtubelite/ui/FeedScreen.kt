@@ -13,6 +13,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.runtime.LaunchedEffect
+import kotlinx.coroutines.flow.Flow
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
@@ -109,7 +112,13 @@ fun FeedScreen(
     onVideoClick: (Video) -> Unit,
     modifier: Modifier = Modifier,
     header: (@Composable () -> Unit)? = null,
+    /** Emits when the page's bottom-bar button is tapped again, to jump back to the top. */
+    scrollToTop: Flow<Unit>? = null,
 ) {
+    val listState = rememberLazyListState()
+    LaunchedEffect(scrollToTop) {
+        scrollToTop?.collect { listState.animateScrollToItem(0) }
+    }
     // Read here: the LazyColumn's content block below isn't composable, so it can't read locals.
     val shelf = LocalShortsShelf.current
     val shorts = if (shelf.enabled) state.videos.filter { it.isShort } else emptyList()
@@ -119,6 +128,7 @@ fun FeedScreen(
         modifier = modifier.fillMaxSize(),
     ) {
         LazyColumn(
+            state = listState,
             modifier = Modifier.fillMaxSize(),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
@@ -170,7 +180,7 @@ private fun VideoRow(video: Video, onClick: () -> Unit) {
             )
             val badge = when {
                 video.isLive -> "LIVE"
-                else -> video.duration?.takeIf { !it.isZero }?.let(::formatDuration)
+                else -> video.duration?.takeIf { it.seconds > 0 }?.let(::formatDuration)
             }
             if (badge != null) {
                 Text(

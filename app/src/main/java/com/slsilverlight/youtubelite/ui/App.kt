@@ -49,6 +49,9 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.slsilverlight.youtubelite.data.AppSettings
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.map
 import com.slsilverlight.youtubelite.data.VIDEO_CATEGORY_NAMES
 
 private const val SEARCH_ROUTE = "search"
@@ -104,6 +107,10 @@ private fun MainScaffold(viewModel: MainViewModel, settings: AppSettings) {
 
     // The player and Shorts are full-screen, without the top and bottom bars.
     val onPlayerScreen = currentRoute?.startsWith("player") == true || currentRoute == SHORTS_ROUTE
+    val tabReselected = remember { MutableSharedFlow<String>(extraBufferCapacity = 1) }
+    val homeScrollToTop = remember { tabReselected.filter { it == Tab.Home.route }.map { } }
+    val subscriptionsScrollToTop = remember { tabReselected.filter { it == Tab.Subscriptions.route }.map { } }
+
     val reminder by viewModel.reminder.collectAsStateWithLifecycle()
     reminder?.let {
         ReminderDialog(
@@ -163,7 +170,11 @@ private fun MainScaffold(viewModel: MainViewModel, settings: AppSettings) {
                     tabs.forEach { tab ->
                         NavigationBarItem(
                             selected = currentRoute == tab.route || currentRoute?.startsWith("${tab.route}/") == true,
-                            onClick = { navController.navigateToTab(tab) },
+                            onClick = {
+                                // Like YouTube: tapping the tab you're on scrolls it back to the top.
+                                if (currentRoute == tab.route) tabReselected.tryEmit(tab.route)
+                                else navController.navigateToTab(tab)
+                            },
                             icon = { Icon(tab.icon, contentDescription = null) },
                             label = { Text(tab.label) },
                         )
@@ -187,6 +198,7 @@ private fun MainScaffold(viewModel: MainViewModel, settings: AppSettings) {
                     emptyMessage = "No trending videos right now.",
                     onRefresh = viewModel::refreshHome,
                     onVideoClick = { navController.navigate("player/${it.id}") },
+                    scrollToTop = homeScrollToTop,
                     header = {
                         HomeChips(homeFilter, favourites, onSelect = { viewModel.selectHomeFilter(it) })
                     },
@@ -207,6 +219,7 @@ private fun MainScaffold(viewModel: MainViewModel, settings: AppSettings) {
                             emptyMessage = if (selected == null) "No recent videos from your subscriptions."
                                 else "This channel has no videos yet.",
                             onRefresh = { viewModel.refreshSubscriptions() },
+                            scrollToTop = subscriptionsScrollToTop,
                             onVideoClick = { navController.navigate("player/${it.id}") },
                             header = {
                                 SubscriptionsHeader(

@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Home
@@ -19,6 +20,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Subscriptions
 import androidx.compose.material.icons.filled.VideoLibrary
+import androidx.compose.material.icons.filled.Whatshot
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -411,20 +413,32 @@ private fun NavHostController.navigateToTab(tab: Tab) {
 
 @Composable
 private fun HomeChips(selected: String, favourites: List<String>, onSelect: (String) -> Unit) {
-    // Until History knows your favourites, "For you" is just Trending, so offer popular categories instead.
+    // Until History knows your favourite categories, offer popular ones.
     val categories = favourites.ifEmpty { listOf("10", "20", "17", "24", "25", "28") }
-    val first = if (favourites.isEmpty()) listOf(HOME_FOR_YOU to "Trending")
-        else listOf(HOME_FOR_YOU to "For you", HOME_TRENDING to "Trending")
-    val chips = first + categories.map { it to (VIDEO_CATEGORY_NAMES[it] ?: it) }
     LazyRow(
         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        items(chips, key = { it.first }) { (id, label) ->
+        item(key = HOME_FOR_YOU) {
             FilterChip(
-                selected = id == selected,
+                selected = selected == HOME_FOR_YOU,
+                onClick = { onSelect(HOME_FOR_YOU) },
+                label = { Text("For you") },
+            )
+        }
+        // Like YouTube, Trending is just a flame icon.
+        item(key = HOME_TRENDING) {
+            FilterChip(
+                selected = selected == HOME_TRENDING,
+                onClick = { onSelect(HOME_TRENDING) },
+                label = { Icon(Icons.Filled.Whatshot, contentDescription = "Trending", modifier = Modifier.size(18.dp)) },
+            )
+        }
+        items(categories, key = { it }) { id ->
+            FilterChip(
+                selected = selected == id,
                 onClick = { onSelect(id) },
-                label = { Text(label) },
+                label = { Text(VIDEO_CATEGORY_NAMES[id] ?: id) },
             )
         }
     }

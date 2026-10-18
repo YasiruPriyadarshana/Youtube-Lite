@@ -92,17 +92,36 @@ class YouTubeRepository(context: Context, tokenProvider: () -> String?) {
      * [favouriteCategories] (from the user's history) it mixes trending videos from those
      * categories in first, taking turns between them, then fills up with general trending.
      */
-    suspend fun homeFeed(showShorts: Boolean, favouriteCategories: List<String> = emptyList()): List<Video> = coroutineScope {
+    suspend fun homeFeed(
+        showShorts: Boolean,
+        favouriteCategories: List<String> = emptyList(),
+        favouriteChannels: List<String> = emptyList(),
+    ): List<Video> = coroutineScope {
         check(hasApiKey) { "No API key" }
         val general = async { trending(categoryId = null) }
         val perCategory = favouriteCategories.map { id -> async { trending(categoryId = id, maxResults = 20) } }
-        val categoryLists = perCategory.awaitAll()
-        val mixed = buildList {
-            val longest = categoryLists.maxOfOrNull { it.size } ?: 0
-            for (i in 0 until longest) categoryLists.forEach { list -> list.getOrNull(i)?.let(::add) }
-            addAll(general.await())
+        // Recent uploads from channels you watch, newest first. A channel that fails is skipped.
+        val limit = Semaphore(4)
+        val perChannel = favouriteChannels.map { id ->
+            async {
+                limit.withPermit {
+                    runCatching { channelVideos(id, showShorts).take(UPLOADS_PER_FAVOURITE_CHANNEL) }.getOrDefault(emptyList())
+                }
+            }
         }
-        mixed.distinctBy { it.id }.filter { showShorts || !it.isShort }
+        val fromChannels = perChannel.awaitAll().flatten().sortedByDescending { it.publishedAt }
+        val fromCategories = interleave(perCategory.awaitAll())
+
+        // Take turns: a new upload from your channels, a trending pick from your categories,
+        // then general trending, so For you isn't just one kind of video.
+        interleave(listOf(fromChannels, fromCategories, general.await()))
+            .distinctBy { it.id }
+            .filter { showShorts || !it.isShort }
+    }
+
+    private fun <T> interleave(lists: List<List<T>>): List<T> = buildList {
+        val longest = lists.maxOfOrNull { it.size } ?: 0
+        for (i in 0 until longest) lists.forEach { list -> list.getOrNull(i)?.let(::add) }
     }
 
     /** Trending videos in one category, for the category chips on Home. */
@@ -297,6 +316,7 @@ class YouTubeRepository(context: Context, tokenProvider: () -> String?) {
     private companion object {
         const val MAX_CHANNELS = 500
         const val UPLOADS_PER_CHANNEL = 5
+        const val UPLOADS_PER_FAVOURITE_CHANNEL = 4
         const val MAX_FEED_VIDEOS = 150
     }
 }

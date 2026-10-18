@@ -207,6 +207,16 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
         .distinctUntilChanged()
 
+    /** Channels you watch most in this app; For you mixes in their latest uploads. */
+    private val topChannels = historyStore.history
+        .map { videos ->
+            videos.map { it.channelId }.filter { it.isNotEmpty() }
+                .groupingBy { it }.eachCount()
+                .entries.sortedByDescending { it.value }
+                .take(8).map { it.key }
+        }
+        .distinctUntilChanged()
+
     val favouriteCategories: StateFlow<List<String>> = topCategories
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
@@ -220,7 +230,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun refreshHome() = load(_home) {
         val showShorts = currentShowShorts()
         when (val filter = _homeFilter.value) {
-            HOME_FOR_YOU -> repo.homeFeed(showShorts, topCategories.first())
+            HOME_FOR_YOU -> repo.homeFeed(showShorts, topCategories.first(), topChannels.first())
             HOME_TRENDING -> repo.homeFeed(showShorts)
             else -> repo.categoryFeed(filter, showShorts)
         }

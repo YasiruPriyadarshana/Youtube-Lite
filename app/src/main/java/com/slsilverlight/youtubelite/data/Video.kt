@@ -80,6 +80,9 @@ data class SubscribedChannel(val id: String, val title: String, val avatarUrl: S
 /** The Subscriptions tab: newest videos, plus the channels with the newest uploads first. */
 data class SubscriptionFeed(val videos: List<Video>, val channels: List<SubscribedChannel>)
 
+/** One page of a comment's replies, oldest first; [nextPageToken] is null on the last page. */
+data class RepliesPage(val replies: List<Comment>, val nextPageToken: String?)
+
 enum class Rating(val apiValue: String) {
     Like("like"), Dislike("dislike"), None("none");
 

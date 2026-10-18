@@ -141,6 +141,12 @@ class YouTubeRepository(context: Context, tokenProvider: () -> String?) {
         return ids.mapNotNull { byId[it] }
     }
 
+    /** One video's details, e.g. for a link opened from another app. Works without signing in. */
+    suspend fun video(id: String): Video? {
+        check(hasApiKey) { "No API key" }
+        return api.publicVideosById(ids = id).items.map(Video::from).firstOrNull()
+    }
+
     /** Videos matching [query], in YouTube's relevance order. */
     suspend fun search(query: String, showShorts: Boolean): List<Video> {
         check(hasApiKey) { "No API key" }
@@ -159,9 +165,10 @@ class YouTubeRepository(context: Context, tokenProvider: () -> String?) {
     }
 
     /** Replies to a top-level comment, oldest first like YouTube shows them. */
-    suspend fun replies(commentId: String): List<Comment> {
+    suspend fun replies(commentId: String, pageToken: String? = null): RepliesPage {
         check(hasApiKey) { "No API key" }
-        return api.replies(parentId = commentId).items.map { reply ->
+        val page = api.replies(parentId = commentId, pageToken = pageToken)
+        val replies = page.items.map { reply ->
             val c = reply.snippet
             Comment(
                 id = reply.id,
@@ -174,6 +181,7 @@ class YouTubeRepository(context: Context, tokenProvider: () -> String?) {
                 publishedAt = runCatching { Instant.parse(c.publishedAt) }.getOrDefault(Instant.EPOCH),
             )
         }.sortedBy { it.publishedAt }
+        return RepliesPage(replies, page.nextPageToken)
     }
 
     suspend fun channel(channelId: String): Channel? {

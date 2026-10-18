@@ -57,6 +57,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import com.slsilverlight.youtubelite.data.RepliesPage
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
@@ -95,7 +98,7 @@ fun PlayerScreen(
     videoId: String,
     video: Video?,
     loadComments: suspend (String) -> Result<List<Comment>?>,
-    loadReplies: suspend (String) -> Result<List<Comment>>,
+    loadReplies: suspend (commentId: String, pageToken: String?) -> Result<RepliesPage>,
     loadChannel: suspend (String) -> Channel?,
     onChannelClick: (String) -> Unit,
     isSignedIn: Boolean,
@@ -390,12 +393,11 @@ private fun CommentsCard(state: CommentsState, count: Long?, onClick: () -> Unit
 private fun CommentsSheet(
     state: CommentsState,
     count: Long?,
-    loadReplies: suspend (String) -> Result<List<Comment>>,
+    loadReplies: suspend (commentId: String, pageToken: String?) -> Result<RepliesPage>,
     onAuthorClick: (String) -> Unit,
 ) {
-    val scope = rememberCoroutineScope()
-    // Keyed by comment id: null while loading, then the replies or an error message.
-    val replies = remember { mutableStateMapOf<String, Result<List<Comment>>?>() }
+    // Comment ids whose replies are open. Hiding replies forgets them; opening again reloads.
+    val open = remember { mutableStateMapOf<String, Boolean>() }
 
     LazyColumn(Modifier.fillMaxWidth().fillMaxHeight(0.9f)) {
         item {
@@ -409,36 +411,77 @@ private fun CommentsSheet(
         items(list, key = { it.id }) { comment ->
             CommentRow(comment, onAuthorClick)
             if (comment.replyCount > 0) {
-                val open = replies.containsKey(comment.id)
+                val isOpen = open[comment.id] == true
                 TextButton(
                     onClick = {
-                        if (open) {
-                            replies.remove(comment.id)
+                        if (isOpen) {
+                            open.remove(comment.id)
                         } else {
-                            replies[comment.id] = null
-                            scope.launch { replies[comment.id] = loadReplies(comment.id) }
+                            open[comment.id] = true
                         }
                     },
                     modifier = Modifier.padding(start = 52.dp),
                 ) {
-                    Text(if (open) "Hide replies" else "${comment.replyCount} ${if (comment.replyCount == 1) "reply" else "replies"}")
+                    Text(if (isOpen) "Hide replies" else "${comment.replyCount} ${if (comment.replyCount == 1) "reply" else "replies"}")
                 }
-                if (open) {
-                    val result = replies[comment.id]
-                    Column(Modifier.padding(start = 40.dp)) {
-                        when {
-                            result == null -> Box(Modifier.fillMaxWidth().padding(8.dp), contentAlignment = Alignment.Center) {
-                                CircularProgressIndicator(Modifier.size(24.dp))
-                            }
-                            result.isFailure -> Text(
-                                result.exceptionOrNull()?.message ?: "Couldn't load replies.",
-                                style = MaterialTheme.typography.bodySmall,
-                                modifier = Modifier.padding(12.dp),
-                            )
-                            else -> result.getOrNull().orEmpty().forEach { CommentRow(it, onAuthorClick, small = true) }
-                        }
-                    }
+                if (isOpen) RepliesThread(comment.id, loadReplies, onAuthorClick)
+            }
+        }
+    }
+}
+
+private const val REPLIES_STEP = 10
+
+/**
+ * A comment's replies, like YouTube: the first few, then "Show more replies" reveals more,
+ * fetching the next page from YouTube once the loaded ones run out.
+ */
+@Composable
+private fun RepliesThread(
+    commentId: String,
+    loadReplies: suspend (commentId: String, pageToken: String?) -> Result<RepliesPage>,
+    onAuthorClick: (String) -> Unit,
+) {
+    val scope = rememberCoroutineScope()
+    val loaded = remember(commentId) { mutableStateListOf<Comment>() }
+    var nextPage by remember(commentId) { mutableStateOf<String?>(null) }
+    var shown by remember(commentId) { mutableIntStateOf(REPLIES_STEP) }
+    var loading by remember(commentId) { mutableStateOf(true) }
+    var error by remember(commentId) { mutableStateOf<String?>(null) }
+
+    fun fetch(token: String?) {
+        loading = true
+        error = null
+        scope.launch {
+            loadReplies(commentId, token)
+                .onSuccess { page ->
+                    loaded += page.replies.filter { r -> loaded.none { it.id == r.id } }
+                    nextPage = page.nextPageToken
                 }
+                .onFailure { error = it.message ?: "Couldn't load replies." }
+            loading = false
+        }
+    }
+    LaunchedEffect(commentId) { fetch(null) }
+
+    Column(Modifier.padding(start = 40.dp)) {
+        loaded.take(shown).forEach { CommentRow(it, onAuthorClick, small = true) }
+        when {
+            loading -> Box(Modifier.fillMaxWidth().padding(8.dp), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(Modifier.size(24.dp))
+            }
+            error != null -> TextButton(onClick = { fetch(nextPage.takeIf { loaded.isNotEmpty() }) }) {
+                Text("${error}  Tap to retry.", style = MaterialTheme.typography.bodySmall)
+            }
+            shown < loaded.size || nextPage != null -> TextButton(
+                onClick = {
+                    shown += REPLIES_STEP
+                    // Fetch the next page once we're about to run out of loaded replies.
+                    if (shown >= loaded.size && nextPage != null) fetch(nextPage)
+                },
+                modifier = Modifier.padding(start = 12.dp),
+            ) {
+                Text("Show more replies")
             }
         }
     }

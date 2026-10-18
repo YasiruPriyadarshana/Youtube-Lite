@@ -49,6 +49,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.slsilverlight.youtubelite.data.AppSettings
+import com.slsilverlight.youtubelite.data.YouTubeLink
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.map
@@ -110,6 +111,24 @@ private fun MainScaffold(viewModel: MainViewModel, settings: AppSettings) {
     val tabReselected = remember { MutableSharedFlow<String>(extraBufferCapacity = 1) }
     val homeScrollToTop = remember { tabReselected.filter { it == Tab.Home.route }.map { } }
     val subscriptionsScrollToTop = remember { tabReselected.filter { it == Tab.Subscriptions.route }.map { } }
+
+    // Open YouTube links from other apps (browser, chat apps, Share).
+    val pendingLink by viewModel.pendingLink.collectAsStateWithLifecycle()
+    val linkedVideos by viewModel.linkedVideos.collectAsStateWithLifecycle()
+    LaunchedEffect(pendingLink) {
+        when (val link = pendingLink ?: return@LaunchedEffect) {
+            is YouTubeLink.Video -> navController.navigate("player/${link.id}")
+            is YouTubeLink.Channel -> {
+                viewModel.openChannel(link.id)
+                navController.navigate("channel/${link.id}")
+            }
+            is YouTubeLink.Search -> {
+                viewModel.search(link.query)
+                navController.navigate(SEARCH_ROUTE)
+            }
+        }
+        viewModel.consumeLink()
+    }
 
     val reminder by viewModel.reminder.collectAsStateWithLifecycle()
     reminder?.let {
@@ -313,13 +332,13 @@ private fun MainScaffold(viewModel: MainViewModel, settings: AppSettings) {
             composable("player/{videoId}") { entry ->
                 val videoId = entry.arguments?.getString("videoId").orEmpty()
                 val video = (subscriptions.videos + home.videos + search.videos + libraryList.videos + channelPage.videos.videos + history)
-                    .firstOrNull { it.id == videoId }
+                    .firstOrNull { it.id == videoId } ?: linkedVideos[videoId]
                 LaunchedEffect(videoId) { video?.let { viewModel.addToHistory(it) } }
                 PlayerScreen(
                     videoId = videoId,
                     video = video,
                     loadComments = { viewModel.comments(it) },
-                    loadReplies = { viewModel.replies(it) },
+                    loadReplies = { id, token -> viewModel.replies(id, token) },
                     loadChannel = { viewModel.channelInfo(it) },
                     onChannelClick = { id ->
                         viewModel.openChannel(id)

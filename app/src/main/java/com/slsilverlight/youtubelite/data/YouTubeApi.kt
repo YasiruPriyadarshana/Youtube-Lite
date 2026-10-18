@@ -104,6 +104,7 @@ interface YouTubeApi {
         @Query("part") part: String = "snippet",
         @Query("textFormat") textFormat: String = "plainText",
         @Query("maxResults") maxResults: Int = 50,
+        @Query("pageToken") pageToken: String? = null,
     ): ListResponse<ReplyItem>
 
     @Headers(PUBLIC)

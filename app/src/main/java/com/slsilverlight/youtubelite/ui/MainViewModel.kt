@@ -14,6 +14,7 @@ import com.slsilverlight.youtubelite.data.HistoryStore
 import com.slsilverlight.youtubelite.data.Playlist
 import com.slsilverlight.youtubelite.data.Rating
 import com.slsilverlight.youtubelite.data.Reminder
+import com.slsilverlight.youtubelite.data.RepliesPage
 import com.slsilverlight.youtubelite.data.SearchSuggestions
 import com.slsilverlight.youtubelite.data.SettingsStore
 import com.slsilverlight.youtubelite.data.SubscribedChannel
@@ -21,6 +22,7 @@ import com.slsilverlight.youtubelite.data.TimeManager
 import com.slsilverlight.youtubelite.data.VIDEO_CATEGORY_NAMES
 import com.slsilverlight.youtubelite.data.Video
 import com.slsilverlight.youtubelite.data.WatchTimeStore
+import com.slsilverlight.youtubelite.data.YouTubeLink
 import com.slsilverlight.youtubelite.data.YouTubeRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -239,7 +241,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     suspend fun rate(videoId: String, rating: Rating): Result<Unit> =
         friendly { withFreshTokenOn401 { repo.rate(videoId, rating) } }
 
-    suspend fun replies(commentId: String): Result<List<Comment>> = friendly { repo.replies(commentId) }
+    suspend fun replies(commentId: String, pageToken: String?): Result<RepliesPage> =
+        friendly { repo.replies(commentId, pageToken) }
 
     private val channelCache = mutableMapOf<String, Channel>()
 
@@ -249,6 +252,30 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private val _channelPage = MutableStateFlow(ChannelPageState())
     val channelPage: StateFlow<ChannelPageState> = _channelPage.asStateFlow()
+
+    /** A YouTube link opened from another app, waiting for the screen to open it. */
+    private val _pendingLink = MutableStateFlow<YouTubeLink?>(null)
+    val pendingLink: StateFlow<YouTubeLink?> = _pendingLink.asStateFlow()
+
+    /** Details for videos opened from links, which aren't in any feed. */
+    private val _linkedVideos = MutableStateFlow<Map<String, Video>>(emptyMap())
+    val linkedVideos: StateFlow<Map<String, Video>> = _linkedVideos.asStateFlow()
+
+    fun handleLink(link: YouTubeLink) {
+        _pendingLink.value = link
+        if (link is YouTubeLink.Video && link.id !in _linkedVideos.value) {
+            viewModelScope.launch {
+                runCatching { repo.video(link.id) }.getOrNull()?.let { video ->
+                    _linkedVideos.update { it + (video.id to video) }
+                    addToHistory(video)
+                }
+            }
+        }
+    }
+
+    fun consumeLink() {
+        _pendingLink.value = null
+    }
 
     fun openChannel(channelId: String) {
         if (_channelPage.value.channelId == channelId && _channelPage.value.videos.loaded) return

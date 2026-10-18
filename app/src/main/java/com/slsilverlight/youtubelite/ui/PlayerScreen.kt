@@ -76,6 +76,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import coil.compose.AsyncImage
 import com.slsilverlight.youtubelite.data.Channel
 import com.slsilverlight.youtubelite.data.Comment
+import com.slsilverlight.youtubelite.data.PlaybackMonitor
 import com.slsilverlight.youtubelite.data.Rating
 import com.slsilverlight.youtubelite.data.Video
 import kotlinx.coroutines.launch
@@ -496,18 +497,35 @@ fun rememberPlayerWebView(videoId: String, loop: Boolean = false, onPlayerError:
             settings.mediaPlaybackRequiresUserGesture = false
             webChromeClient = FullscreenChromeClient(context.findActivity())
             val main = Handler(Looper.getMainLooper())
+            val playerId = System.identityHashCode(this)
             addJavascriptInterface(object {
                 @JavascriptInterface
                 fun onError(code: Int) {
                     main.post { onPlayerError(code) }
+                }
+
+                // YouTube's states: 0 ended, 1 playing, 2 paused, 3 buffering.
+                @JavascriptInterface
+                fun onState(state: Int) {
+                    if (state == 0) PlaybackMonitor.onFinished(playerId)
+                    else if (state != 3) PlaybackMonitor.setPlaying(playerId, state == 1)
                 }
             }, "AndroidPlayer")
             val origin = "https://${context.packageName}"
             loadDataWithBaseURL(origin, playerHtml(videoId, origin, loop), "text/html", "utf-8", null)
         }
     }
+    // Break and bedtime reminders pause whatever is playing.
+    LaunchedEffect(webView) {
+        PlaybackMonitor.pauseRequests.collect {
+            webView.evaluateJavascript("window.player && player.pauseVideo && player.pauseVideo();", null)
+        }
+    }
     DisposableEffect(webView) {
-        onDispose { webView.destroy() }
+        onDispose {
+            PlaybackMonitor.onFinished(System.identityHashCode(webView))
+            webView.destroy()
+        }
     }
     return webView
 }
@@ -553,7 +571,7 @@ private fun playerHtml(videoId: String, origin: String, loop: Boolean) = """
   <script src="https://www.youtube.com/iframe_api"></script>
   <script>
     function onYouTubeIframeAPIReady() {
-      new YT.Player('player', {
+      window.player = new YT.Player('player', {
         width: '100%',
         height: '100%',
         videoId: '$videoId',
@@ -561,7 +579,8 @@ private fun playerHtml(videoId: String, origin: String, loop: Boolean) = """
         playerVars: { autoplay: 1, playsinline: 1, rel: 0, origin: '$origin'${if (loop) ", loop: 1, playlist: '$videoId'" else ""} },
         events: {
           onReady: function (e) { e.target.playVideo(); },
-          onError: function (e) { AndroidPlayer.onError(e.data); }
+          onError: function (e) { AndroidPlayer.onError(e.data); },
+          onStateChange: function (e) { AndroidPlayer.onState(e.data); }
         }
       });
     }

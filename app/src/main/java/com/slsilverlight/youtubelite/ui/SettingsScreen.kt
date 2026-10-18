@@ -23,6 +23,9 @@ fun SettingsScreen(
     onShowShortsChange: (Boolean) -> Unit,
     onShowHomeChange: (Boolean) -> Unit,
     onShowDislikesChange: (Boolean) -> Unit,
+    onOpenTimeWatched: () -> Unit,
+    onBreakReminderChange: (enabled: Boolean, minutes: Int) -> Unit,
+    onBedtimeChange: (enabled: Boolean, start: Int, end: Int, waitForVideo: Boolean) -> Unit,
     onSignOut: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -37,6 +40,7 @@ fun SettingsScreen(
             supportingContent = { Text("Trending videos for your country. YouTube doesn't share your personal recommendations with apps.") },
             trailingContent = { Switch(checked = settings.showHome, onCheckedChange = onShowHomeChange) },
         )
+        TimeManagementSection(settings, onOpenTimeWatched, onBreakReminderChange, onBedtimeChange)
         if (signedIn) {
             ListItem(
             headlineContent = { Text("Show dislike count") },

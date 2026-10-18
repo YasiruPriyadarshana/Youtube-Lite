@@ -13,11 +13,14 @@ import com.slsilverlight.youtubelite.data.DislikeCounts
 import com.slsilverlight.youtubelite.data.HistoryStore
 import com.slsilverlight.youtubelite.data.Playlist
 import com.slsilverlight.youtubelite.data.Rating
+import com.slsilverlight.youtubelite.data.Reminder
 import com.slsilverlight.youtubelite.data.SearchSuggestions
 import com.slsilverlight.youtubelite.data.SettingsStore
 import com.slsilverlight.youtubelite.data.SubscribedChannel
+import com.slsilverlight.youtubelite.data.TimeManager
 import com.slsilverlight.youtubelite.data.VIDEO_CATEGORY_NAMES
 import com.slsilverlight.youtubelite.data.Video
+import com.slsilverlight.youtubelite.data.WatchTimeStore
 import com.slsilverlight.youtubelite.data.YouTubeRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -31,6 +34,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.time.LocalDate
 import retrofit2.HttpException
 
 sealed interface AuthState {
@@ -114,6 +118,24 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     val settings: StateFlow<AppSettings?> =
         settingsStore.settings.stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    private val watchTimeStore = WatchTimeStore(app)
+    private val timeManager = TimeManager(viewModelScope, settings, watchTimeStore)
+    val reminder: StateFlow<Reminder?> = timeManager.reminder
+
+    /** Seconds watched per day, for the Time watched page. */
+    val watchTime: StateFlow<Map<LocalDate, Long>> =
+        watchTimeStore.days.stateIn(viewModelScope, SharingStarted.Eagerly, emptyMap())
+
+    fun dismissReminder() = timeManager.dismiss()
+
+    fun saveWatchTime() = timeManager.flush()
+
+    fun setBreakReminder(enabled: Boolean, minutes: Int) =
+        viewModelScope.launch { settingsStore.setBreakReminder(enabled, minutes) }
+
+    fun setBedtime(enabled: Boolean, start: Int, end: Int, waitForVideo: Boolean) =
+        viewModelScope.launch { settingsStore.setBedtime(enabled, start, end, waitForVideo) }
 
     init {
         viewModelScope.launch { applyOutcome(auth.authorize()) }

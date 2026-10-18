@@ -57,6 +57,7 @@ private const val LIKED_ROUTE = "library/liked"
 private const val PLAYLIST_ROUTE = "library/playlist/{id}/{title}"
 private const val CHANNEL_ROUTE = "channel/{id}"
 private const val SHORTS_ROUTE = "shorts"
+private const val TIME_WATCHED_ROUTE = "settings/time-watched"
 
 private enum class Tab(val route: String, val label: String, val icon: ImageVector) {
     Home("home", "Home", Icons.Filled.Home),
@@ -103,6 +104,18 @@ private fun MainScaffold(viewModel: MainViewModel, settings: AppSettings) {
 
     // The player and Shorts are full-screen, without the top and bottom bars.
     val onPlayerScreen = currentRoute?.startsWith("player") == true || currentRoute == SHORTS_ROUTE
+    val reminder by viewModel.reminder.collectAsStateWithLifecycle()
+    reminder?.let {
+        ReminderDialog(
+            reminder = it,
+            onDismiss = { viewModel.dismissReminder() },
+            onOpenSettings = {
+                viewModel.dismissReminder()
+                navController.navigateToTab(Tab.Settings)
+            },
+        )
+    }
+
     val shortsShelf = ShortsShelfConfig(
         enabled = settings.showShorts,
         onOpen = { list, start ->
@@ -127,6 +140,7 @@ private fun MainScaffold(viewModel: MainViewModel, settings: AppSettings) {
                             SEARCH_ROUTE -> "Search"
                             HISTORY_ROUTE -> "History"
                             LIKED_ROUTE -> "Liked videos"
+                            TIME_WATCHED_ROUTE -> "Time watched"
                             PLAYLIST_ROUTE -> backStack?.arguments?.getString("title")
                             CHANNEL_ROUTE -> channelPage.channel?.title ?: "Channel"
                             else -> tabs.firstOrNull { it.route == currentRoute }?.label
@@ -261,8 +275,15 @@ private fun MainScaffold(viewModel: MainViewModel, settings: AppSettings) {
                     onShowShortsChange = { viewModel.setShowShorts(it) },
                     onShowHomeChange = { viewModel.setShowHome(it) },
                     onShowDislikesChange = { viewModel.setShowDislikes(it) },
+                    onOpenTimeWatched = { navController.navigate(TIME_WATCHED_ROUTE) },
+                    onBreakReminderChange = { on, minutes -> viewModel.setBreakReminder(on, minutes) },
+                    onBedtimeChange = { on, start, end, wait -> viewModel.setBedtime(on, start, end, wait) },
                     onSignOut = viewModel::signOut,
                 )
+            }
+            composable(TIME_WATCHED_ROUTE) {
+                val watchTime by viewModel.watchTime.collectAsStateWithLifecycle()
+                TimeWatchedScreen(watchTime)
             }
             composable(SEARCH_ROUTE) {
                 val recentSearches by viewModel.recentSearches.collectAsStateWithLifecycle()

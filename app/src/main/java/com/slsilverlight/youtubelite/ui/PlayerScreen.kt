@@ -100,6 +100,7 @@ fun PlayerScreen(
     isSignedIn: Boolean,
     loadRating: suspend (String) -> Rating?,
     rate: suspend (String, Rating) -> Result<Unit>,
+    loadDislikes: suspend (String) -> Long?,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -209,6 +210,7 @@ fun PlayerScreen(
                     isSignedIn = isSignedIn,
                     loadRating = loadRating,
                     rate = rate,
+                    loadDislikes = loadDislikes,
                 )
             }
             item {
@@ -248,8 +250,10 @@ private fun ActionRow(
     isSignedIn: Boolean,
     loadRating: suspend (String) -> Rating?,
     rate: suspend (String, Rating) -> Result<Unit>,
+    loadDislikes: suspend (String) -> Long?,
 ) {
     val context = LocalContext.current
+    val dislikeEstimate by produceState<Long?>(null, videoId) { value = loadDislikes(videoId) }
     val scope = rememberCoroutineScope()
     // The rating YouTube had when the screen opened, and the one shown now.
     var original by remember(videoId) { mutableStateOf(Rating.None) }
@@ -276,6 +280,9 @@ private fun ActionRow(
 
     val shownLikes = likeCount?.let {
         it - (if (original == Rating.Like) 1 else 0) + (if (current == Rating.Like) 1 else 0)
+    }
+    val shownDislikes = dislikeEstimate?.let {
+        (it - (if (original == Rating.Dislike) 1 else 0) + (if (current == Rating.Dislike) 1 else 0)).coerceAtLeast(0)
     }
 
     Row(
@@ -305,16 +312,22 @@ private fun ActionRow(
                     }
                 }
                 VerticalDivider(Modifier.height(20.dp))
-                Box(
+                Row(
                     Modifier
                         .clickable { toggle(Rating.Dislike) }
                         .padding(start = 12.dp, end = 14.dp, top = 8.dp, bottom = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Icon(
                         if (current == Rating.Dislike) Icons.Filled.ThumbDown else Icons.Outlined.ThumbDown,
                         contentDescription = "Dislike",
                         modifier = Modifier.size(20.dp),
                     )
+                    if (shownDislikes != null) {
+                        Spacer(Modifier.width(6.dp))
+                        // "~" marks it as an estimate; YouTube doesn't publish real dislike counts.
+                        Text("~${formatCompact(shownDislikes)}", style = MaterialTheme.typography.labelLarge)
+                    }
                 }
             }
         }

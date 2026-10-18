@@ -22,6 +22,7 @@ fun SettingsScreen(
     signedIn: Boolean,
     onShowShortsChange: (Boolean) -> Unit,
     onShowHomeChange: (Boolean) -> Unit,
+    onShowDislikesChange: (Boolean) -> Unit,
     onSignOut: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -37,7 +38,12 @@ fun SettingsScreen(
             trailingContent = { Switch(checked = settings.showHome, onCheckedChange = onShowHomeChange) },
         )
         if (signedIn) {
-            HorizontalDivider()
+            ListItem(
+            headlineContent = { Text("Show dislike count") },
+            supportingContent = { Text("An estimate from Return YouTube Dislike, since YouTube hides the real number") },
+            trailingContent = { Switch(checked = settings.showDislikes, onCheckedChange = onShowDislikesChange) },
+        )
+        HorizontalDivider()
             TextButton(onClick = onSignOut, modifier = Modifier.padding(8.dp)) {
                 Text("Sign out", color = MaterialTheme.colorScheme.error)
             }

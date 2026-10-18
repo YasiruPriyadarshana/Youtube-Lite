@@ -12,6 +12,7 @@ private val Context.dataStore by preferencesDataStore(name = "settings")
 data class AppSettings(
     val showShorts: Boolean = false,
     val showHome: Boolean = true,
+    val showDislikes: Boolean = false,
 )
 
 class SettingsStore(private val context: Context) {
@@ -20,6 +21,7 @@ class SettingsStore(private val context: Context) {
         AppSettings(
             showShorts = prefs[SHOW_SHORTS] ?: false,
             showHome = prefs[SHOW_HOME] ?: true,
+            showDislikes = prefs[SHOW_DISLIKES] ?: false,
         )
     }
 
@@ -31,8 +33,13 @@ class SettingsStore(private val context: Context) {
         context.dataStore.edit { it[SHOW_HOME] = value }
     }
 
+    suspend fun setShowDislikes(value: Boolean) {
+        context.dataStore.edit { it[SHOW_DISLIKES] = value }
+    }
+
     private companion object {
         val SHOW_SHORTS = booleanPreferencesKey("show_shorts")
         val SHOW_HOME = booleanPreferencesKey("show_home")
+        val SHOW_DISLIKES = booleanPreferencesKey("show_dislikes")
     }
 }

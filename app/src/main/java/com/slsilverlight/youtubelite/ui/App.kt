@@ -224,6 +224,7 @@ private fun MainScaffold(viewModel: MainViewModel, settings: AppSettings) {
                     signedIn = authState == AuthState.SignedIn,
                     onShowShortsChange = { viewModel.setShowShorts(it) },
                     onShowHomeChange = { viewModel.setShowHome(it) },
+                    onShowDislikesChange = { viewModel.setShowDislikes(it) },
                     onSignOut = viewModel::signOut,
                 )
             }
@@ -257,6 +258,8 @@ private fun MainScaffold(viewModel: MainViewModel, settings: AppSettings) {
                     isSignedIn = authState == AuthState.SignedIn,
                     loadRating = { viewModel.rating(it) },
                     rate = { id, rating -> viewModel.rate(id, rating) },
+                    // With the setting off the service isn't asked at all.
+                    loadDislikes = { if (settings.showDislikes) viewModel.dislikeEstimate(it) else null },
                 )
             }
             composable(CHANNEL_ROUTE) {

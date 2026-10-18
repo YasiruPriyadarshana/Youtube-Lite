@@ -9,6 +9,7 @@ import com.slsilverlight.youtubelite.auth.GoogleAuth
 import com.slsilverlight.youtubelite.data.AppSettings
 import com.slsilverlight.youtubelite.data.Channel
 import com.slsilverlight.youtubelite.data.Comment
+import com.slsilverlight.youtubelite.data.DislikeCounts
 import com.slsilverlight.youtubelite.data.HistoryStore
 import com.slsilverlight.youtubelite.data.Playlist
 import com.slsilverlight.youtubelite.data.Rating
@@ -62,6 +63,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val settingsStore = SettingsStore(app)
     private val historyStore = HistoryStore(app)
     private val searchSuggestions = SearchSuggestions(app)
+    private val dislikeCounts = DislikeCounts()
 
     @Volatile private var accessToken: String? = null
     private val repo = YouTubeRepository(app) { accessToken }
@@ -138,6 +140,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     /** Your like/dislike on a video, or null when signed out or it couldn't be read. */
     suspend fun rating(videoId: String): Rating? =
         if (!isSignedIn) null else friendly { withFreshTokenOn401 { repo.rating(videoId) } }.getOrNull()
+
+    /** Estimated dislikes from Return YouTube Dislike, or null if unavailable. */
+    suspend fun dislikeEstimate(videoId: String): Long? = dislikeCounts.estimate(videoId)
 
     suspend fun rate(videoId: String, rating: Rating): Result<Unit> =
         friendly { withFreshTokenOn401 { repo.rate(videoId, rating) } }
@@ -238,6 +243,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun setShowShorts(value: Boolean) = viewModelScope.launch { settingsStore.setShowShorts(value) }
 
     fun setShowHome(value: Boolean) = viewModelScope.launch { settingsStore.setShowHome(value) }
+
+    fun setShowDislikes(value: Boolean) = viewModelScope.launch { settingsStore.setShowDislikes(value) }
 
     private suspend fun currentShowShorts() = settingsStore.settings.first().showShorts
 

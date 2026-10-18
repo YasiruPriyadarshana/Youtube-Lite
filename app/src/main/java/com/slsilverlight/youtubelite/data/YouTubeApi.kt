@@ -86,6 +86,30 @@ interface YouTubeApi {
         @Query("maxResults") maxResults: Int = 30,
     ): ListResponse<CommentThread>
 
+    @Headers(PUBLIC)
+    @GET("comments")
+    suspend fun replies(
+        @Query("parentId") parentId: String,
+        @Query("part") part: String = "snippet",
+        @Query("textFormat") textFormat: String = "plainText",
+        @Query("maxResults") maxResults: Int = 50,
+    ): ListResponse<ReplyItem>
+
+    @Headers(PUBLIC)
+    @GET("channels")
+    suspend fun channels(
+        @Query("id") ids: String,
+        @Query("part") part: String = "snippet,statistics",
+    ): ListResponse<ChannelItem>
+
+    @Headers(PUBLIC)
+    @GET("playlistItems")
+    suspend fun publicPlaylistItems(
+        @Query("playlistId") playlistId: String,
+        @Query("part") part: String = "contentDetails",
+        @Query("maxResults") maxResults: Int,
+    ): ListResponse<PlaylistItem>
+
     companion object {
         const val PUBLIC_HEADER = "X-Public-Request"
         const val PUBLIC = "X-Public-Request: true"
@@ -145,7 +169,7 @@ data class Thumbnail(val url: String)
 data class VideoContentDetails(val duration: String = "")
 
 @Serializable
-data class VideoStatistics(val viewCount: String? = null)
+data class VideoStatistics(val viewCount: String? = null, val commentCount: String? = null)
 
 @Serializable
 data class CommentThread(val id: String, val snippet: CommentThreadSnippet)
@@ -160,6 +184,7 @@ data class TopLevelComment(val snippet: CommentSnippet)
 data class CommentSnippet(
     val authorDisplayName: String = "",
     val authorProfileImageUrl: String? = null,
+    val authorChannelId: AuthorChannelId? = null,
     val textDisplay: String = "",
     val likeCount: Long = 0,
     val publishedAt: String = "",
@@ -183,3 +208,31 @@ data class PlaylistSnippet(val title: String = "", val thumbnails: Thumbnails = 
 
 @Serializable
 data class PlaylistContentDetails(val itemCount: Int = 0)
+
+@Serializable
+data class AuthorChannelId(val value: String = "")
+
+@Serializable
+data class ReplyItem(val id: String, val snippet: CommentSnippet)
+
+@Serializable
+data class ChannelItem(
+    val id: String,
+    val snippet: ChannelSnippet,
+    val statistics: ChannelStatistics? = null,
+)
+
+@Serializable
+data class ChannelSnippet(
+    val title: String = "",
+    val description: String = "",
+    val customUrl: String? = null,
+    val thumbnails: Thumbnails = Thumbnails(),
+)
+
+@Serializable
+data class ChannelStatistics(
+    val subscriberCount: String? = null,
+    val hiddenSubscriberCount: Boolean = false,
+    val videoCount: String? = null,
+)

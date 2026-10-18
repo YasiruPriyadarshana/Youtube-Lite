@@ -119,6 +119,61 @@ class YouTubeRepository(context: Context, tokenProvider: () -> String?) {
         return ids.mapNotNull { byId[it] }.filter { showShorts || !it.looksLikeShort() }
     }
 
+    /** Replies to a top-level comment, oldest first like YouTube shows them. */
+    suspend fun replies(commentId: String): List<Comment> {
+        check(hasApiKey) { "No API key" }
+        return api.replies(parentId = commentId).items.map { reply ->
+            val c = reply.snippet
+            Comment(
+                id = reply.id,
+                author = c.authorDisplayName,
+                authorChannelId = c.authorChannelId?.value?.takeIf { it.isNotEmpty() },
+                authorImageUrl = c.authorProfileImageUrl,
+                text = c.textDisplay,
+                likeCount = c.likeCount,
+                replyCount = 0,
+                publishedAt = runCatching { Instant.parse(c.publishedAt) }.getOrDefault(Instant.EPOCH),
+            )
+        }.sortedBy { it.publishedAt }
+    }
+
+    suspend fun channel(channelId: String): Channel? {
+        check(hasApiKey) { "No API key" }
+        val item = api.channels(ids = channelId).items.firstOrNull() ?: return null
+        return Channel(
+            id = item.id,
+            title = item.snippet.title,
+            handle = item.snippet.customUrl,
+            description = item.snippet.description,
+            avatarUrl = item.snippet.thumbnails.medium?.url ?: item.snippet.thumbnails.high?.url,
+            subscriberCount = item.statistics?.takeUnless { it.hiddenSubscriberCount }?.subscriberCount?.toLongOrNull(),
+            videoCount = item.statistics?.videoCount?.toLongOrNull(),
+        )
+    }
+
+    /** A channel's latest uploads, newest first. Works without signing in. */
+    suspend fun channelVideos(channelId: String, showShorts: Boolean): List<Video> {
+        check(hasApiKey) { "No API key" }
+        val suffix = channelId.removePrefix("UC")
+        // Same trick as the Subscriptions feed: "UULF" is the long-form-only uploads list.
+        val longForm = if (showShorts) null else publicUploadsOrNull("UULF$suffix")
+        val needsShortsCheck = !showShorts && longForm == null
+        val items = longForm ?: publicUploadsOrNull("UU$suffix").orEmpty()
+        val ids = items.map { it.contentDetails.videoId }
+        if (ids.isEmpty()) return emptyList()
+        val byId = api.publicVideosById(ids = ids.joinToString(",")).items.map(Video::from).associateBy { it.id }
+        return ids.mapNotNull { byId[it] }
+            .filterNot { needsShortsCheck && it.looksLikeShort() }
+            .sortedByDescending { it.publishedAt }
+    }
+
+    /** A playlist's items, or null when YouTube says it doesn't exist (404). */
+    private suspend fun publicUploadsOrNull(playlistId: String): List<PlaylistItem>? = try {
+        api.publicPlaylistItems(playlistId = playlistId, maxResults = 30).items
+    } catch (e: HttpException) {
+        if (e.code() == 404) null else throw e
+    }
+
     /** Top comments for a video. Returns null when the channel has turned comments off. */
     suspend fun comments(videoId: String): List<Comment>? {
         check(hasApiKey) { "No API key" }
@@ -128,6 +183,7 @@ class YouTubeRepository(context: Context, tokenProvider: () -> String?) {
                 Comment(
                     id = thread.id,
                     author = c.authorDisplayName,
+                    authorChannelId = c.authorChannelId?.value?.takeIf { it.isNotEmpty() },
                     authorImageUrl = c.authorProfileImageUrl,
                     text = c.textDisplay,
                     likeCount = c.likeCount,

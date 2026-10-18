@@ -49,6 +49,7 @@ private const val SEARCH_ROUTE = "search"
 private const val HISTORY_ROUTE = "library/history"
 private const val LIKED_ROUTE = "library/liked"
 private const val PLAYLIST_ROUTE = "library/playlist/{id}/{title}"
+private const val CHANNEL_ROUTE = "channel/{id}"
 
 private enum class Tab(val route: String, val label: String, val icon: ImageVector) {
     Home("home", "Home", Icons.Filled.Home),
@@ -78,6 +79,7 @@ private fun MainScaffold(viewModel: MainViewModel, settings: AppSettings) {
     val history by viewModel.history.collectAsStateWithLifecycle()
     val playlists by viewModel.playlists.collectAsStateWithLifecycle()
     val libraryList by viewModel.libraryList.collectAsStateWithLifecycle()
+    val channelPage by viewModel.channelPage.collectAsStateWithLifecycle()
 
     val navController = rememberNavController()
     // Open on Home when it's switched on, otherwise on Subscriptions.
@@ -98,7 +100,7 @@ private fun MainScaffold(viewModel: MainViewModel, settings: AppSettings) {
                 TopAppBar(
                     navigationIcon = {
                         // Screens that aren't tabs (search, history, liked, a playlist) get a back arrow.
-                        if (Tab.entries.none { it.route == currentRoute }) {
+                        if (currentRoute != null && Tab.entries.none { it.route == currentRoute }) {
                             IconButton(onClick = { navController.popBackStack() }) {
                                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                             }
@@ -110,6 +112,7 @@ private fun MainScaffold(viewModel: MainViewModel, settings: AppSettings) {
                             HISTORY_ROUTE -> "History"
                             LIKED_ROUTE -> "Liked videos"
                             PLAYLIST_ROUTE -> backStack?.arguments?.getString("title")
+                            CHANNEL_ROUTE -> channelPage.channel?.title ?: "Channel"
                             else -> tabs.firstOrNull { it.route == currentRoute }?.label
                         }
                         Text(title ?: "YouTube Lite")
@@ -238,10 +241,27 @@ private fun MainScaffold(viewModel: MainViewModel, settings: AppSettings) {
             }
             composable("player/{videoId}") { entry ->
                 val videoId = entry.arguments?.getString("videoId").orEmpty()
-                val video = (subscriptions.videos + home.videos + search.videos + libraryList.videos + history)
+                val video = (subscriptions.videos + home.videos + search.videos + libraryList.videos + channelPage.videos.videos + history)
                     .firstOrNull { it.id == videoId }
                 LaunchedEffect(videoId) { video?.let { viewModel.addToHistory(it) } }
-                PlayerScreen(videoId = videoId, video = video, loadComments = { viewModel.comments(it) })
+                PlayerScreen(
+                    videoId = videoId,
+                    video = video,
+                    loadComments = { viewModel.comments(it) },
+                    loadReplies = { viewModel.replies(it) },
+                    loadChannel = { viewModel.channelInfo(it) },
+                    onChannelClick = { id ->
+                        viewModel.openChannel(id)
+                        navController.navigate("channel/$id")
+                    },
+                )
+            }
+            composable(CHANNEL_ROUTE) {
+                ChannelScreen(
+                    state = channelPage,
+                    onRefresh = viewModel::refreshChannelVideos,
+                    onVideoClick = { navController.navigate("player/${it.id}") },
+                )
             }
         }
     }

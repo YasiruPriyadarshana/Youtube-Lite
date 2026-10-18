@@ -37,6 +37,7 @@ fun FeedScreen(
     onRefresh: () -> Unit,
     onVideoClick: (Video) -> Unit,
     modifier: Modifier = Modifier,
+    header: (@Composable () -> Unit)? = null,
 ) {
     PullToRefreshBox(
         isRefreshing = state.loading,
@@ -47,6 +48,7 @@ fun FeedScreen(
             modifier = Modifier.fillMaxSize(),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
+            if (header != null) item { header() }
             state.error?.let { error ->
                 item { Message(error) }
             }

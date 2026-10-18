@@ -11,13 +11,16 @@ fun formatDuration(d: Duration): String {
     return if (h > 0) "%d:%02d:%02d".format(h, m, s) else "%d:%02d".format(m, s)
 }
 
-fun formatViews(count: Long): String = when {
-    count >= 1_000_000_000 -> "%.1fB views".format(count / 1e9)
-    count >= 1_000_000 -> "%.1fM views".format(count / 1e6)
-    count >= 1_000 -> "%.0fK views".format(count / 1e3)
-    count == 1L -> "1 view"
-    else -> "$count views"
+/** 1234 -> "1.2K", 5_600_000 -> "5.6M". */
+fun formatCompact(count: Long): String = when {
+    count >= 1_000_000_000 -> "%.1fB".format(count / 1e9)
+    count >= 1_000_000 -> "%.1fM".format(count / 1e6)
+    count >= 10_000 -> "%.0fK".format(count / 1e3)
+    count >= 1_000 -> "%.1fK".format(count / 1e3)
+    else -> count.toString()
 }.replace(".0", "")
+
+fun formatViews(count: Long): String = if (count == 1L) "1 view" else "${formatCompact(count)} views"
 
 fun formatAge(publishedAt: Instant, now: Instant = Instant.now()): String {
     val secs = Duration.between(publishedAt, now).seconds.coerceAtLeast(0)

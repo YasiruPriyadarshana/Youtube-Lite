@@ -4,70 +4,88 @@ import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
+import android.content.Intent
 import android.content.pm.ActivityInfo
+import android.net.Uri
+import android.os.Handler
+import android.os.Looper
 import android.view.View
 import android.view.ViewGroup
+import android.webkit.JavascriptInterface
+import android.webkit.WebChromeClient
+import android.webkit.WebView
 import android.widget.FrameLayout
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.runtime.produceState
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import coil.compose.AsyncImage
-import com.slsilverlight.youtubelite.data.Comment
-import android.content.Intent
-import android.net.Uri
-import android.os.Handler
-import android.os.Looper
-import android.webkit.JavascriptInterface
-import android.webkit.WebChromeClient
-import android.webkit.WebView
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import coil.compose.AsyncImage
+import com.slsilverlight.youtubelite.data.Channel
+import com.slsilverlight.youtubelite.data.Comment
 import com.slsilverlight.youtubelite.data.Video
+import kotlinx.coroutines.launch
 
 /**
- * Plays a video in YouTube's official embedded player inside a WebView, with comments below.
+ * Plays a video in YouTube's official embedded player inside a WebView, with the channel and
+ * a comments panel below, laid out like the YouTube app.
  *
  * YouTube requires embeds to identify the app through the HTTP Referer, otherwise the player
  * shows error 152/153. Loading the page with a base URL of https://<package name> sets it.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 fun PlayerScreen(
     videoId: String,
     video: Video?,
     loadComments: suspend (String) -> Result<List<Comment>?>,
+    loadReplies: suspend (String) -> Result<List<Comment>>,
+    loadChannel: suspend (String) -> Channel?,
+    onChannelClick: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
     var playerError by remember { mutableStateOf<Int?>(null) }
+    var showComments by remember { mutableStateOf(false) }
 
     val webView = remember {
         WebView(context).apply {
@@ -100,6 +118,10 @@ fun PlayerScreen(
             onFailure = { CommentsState.Failed(it.message ?: "Couldn't load comments.") },
         )
     }
+    val channelId = video?.channelId.orEmpty()
+    val channel by produceState<Channel?>(null, channelId) {
+        if (channelId.isNotEmpty()) value = loadChannel(channelId)
+    }
 
     Column(modifier.fillMaxSize()) {
         AndroidView(
@@ -112,7 +134,7 @@ fun PlayerScreen(
                     if (video != null) {
                         Text(video.title, style = MaterialTheme.typography.titleMedium)
                         Text(
-                            listOfNotNull(video.channelTitle, video.viewCount?.let(::formatViews), formatAge(video.publishedAt))
+                            listOfNotNull(video.viewCount?.let(::formatViews), formatAge(video.publishedAt))
                                 .joinToString(" · "),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -125,35 +147,75 @@ fun PlayerScreen(
                             modifier = Modifier.padding(top = 12.dp),
                         )
                     }
-                    OutlinedButton(
-                        onClick = {
-                            context.startActivity(
-                                Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/watch?v=$videoId"))
-                            )
-                        },
-                        modifier = Modifier.padding(top = 12.dp),
-                    ) { Text("Open in YouTube") }
                 }
-                HorizontalDivider()
-                Text(
-                    "Comments",
-                    style = MaterialTheme.typography.titleSmall,
-                    modifier = Modifier.padding(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 4.dp),
-                )
             }
-            when (val state = comments) {
-                CommentsState.Loading -> item {
-                    Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator()
+            if (video != null && channelId.isNotEmpty()) {
+                item {
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .clickable { onChannelClick(channelId) }
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        AsyncImage(
+                            model = channel?.avatarUrl,
+                            contentDescription = "Open channel",
+                            modifier = Modifier.size(40.dp).clip(CircleShape).background(Color.DarkGray),
+                        )
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                channel?.title ?: video.channelTitle,
+                                style = MaterialTheme.typography.titleSmall,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            channel?.subscriberCount?.let {
+                                Text(
+                                    "${formatCompact(it)} subscribers",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
                     }
                 }
-                CommentsState.Disabled -> item { CommentsMessage("Comments are turned off for this video.") }
-                is CommentsState.Failed -> item { CommentsMessage(state.message) }
-                is CommentsState.Loaded -> {
-                    if (state.comments.isEmpty()) item { CommentsMessage("No comments yet.") }
-                    items(state.comments, key = { it.id }) { CommentRow(it) }
-                }
             }
+            item {
+                OutlinedButton(
+                    onClick = {
+                        context.startActivity(
+                            Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/watch?v=$videoId"))
+                        )
+                    },
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                ) { Text("Open in YouTube") }
+            }
+            item {
+                CommentsCard(
+                    state = comments,
+                    count = video?.commentCount,
+                    onClick = { showComments = true },
+                )
+            }
+        }
+    }
+
+    if (showComments) {
+        ModalBottomSheet(
+            onDismissRequest = { showComments = false },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        ) {
+            CommentsSheet(
+                state = comments,
+                count = video?.commentCount,
+                loadReplies = loadReplies,
+                onAuthorClick = {
+                    showComments = false
+                    onChannelClick(it)
+                },
+            )
         }
     }
 }
@@ -165,23 +227,116 @@ private sealed interface CommentsState {
     data class Loaded(val comments: List<Comment>) : CommentsState
 }
 
+/** The collapsed "Comments" box under the video, showing the top comment like YouTube does. */
 @Composable
-private fun CommentsMessage(text: String) {
-    Text(
-        text,
-        style = MaterialTheme.typography.bodyMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.padding(12.dp),
-    )
+private fun CommentsCard(state: CommentsState, count: Long?, onClick: () -> Unit) {
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(12.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(enabled = state is CommentsState.Loaded, onClick = onClick),
+    ) {
+        Column(Modifier.padding(12.dp)) {
+            Text(
+                listOfNotNull("Comments", count?.let(::formatCompact)).joinToString("  "),
+                style = MaterialTheme.typography.titleSmall,
+            )
+            val preview = when (state) {
+                CommentsState.Loading -> "Loading…"
+                CommentsState.Disabled -> "Comments are turned off."
+                is CommentsState.Failed -> state.message
+                is CommentsState.Loaded -> state.comments.firstOrNull()?.text ?: "No comments yet."
+            }
+            Row(Modifier.padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                val first = (state as? CommentsState.Loaded)?.comments?.firstOrNull()
+                if (first != null) {
+                    AsyncImage(
+                        model = first.authorImageUrl,
+                        contentDescription = null,
+                        modifier = Modifier.size(24.dp).clip(CircleShape).background(Color.DarkGray),
+                    )
+                    Spacer(Modifier.width(8.dp))
+                }
+                Text(preview, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            }
+        }
+    }
+}
+
+/** The full comments panel, with replies that open under each comment. */
+@Composable
+private fun CommentsSheet(
+    state: CommentsState,
+    count: Long?,
+    loadReplies: suspend (String) -> Result<List<Comment>>,
+    onAuthorClick: (String) -> Unit,
+) {
+    val scope = rememberCoroutineScope()
+    // Keyed by comment id: null while loading, then the replies or an error message.
+    val replies = remember { mutableStateMapOf<String, Result<List<Comment>>?>() }
+
+    LazyColumn(Modifier.fillMaxWidth().fillMaxHeight(0.9f)) {
+        item {
+            Text(
+                listOfNotNull("Comments", count?.let(::formatCompact)).joinToString("  "),
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+            )
+        }
+        val list = (state as? CommentsState.Loaded)?.comments.orEmpty()
+        items(list, key = { it.id }) { comment ->
+            CommentRow(comment, onAuthorClick)
+            if (comment.replyCount > 0) {
+                val open = replies.containsKey(comment.id)
+                TextButton(
+                    onClick = {
+                        if (open) {
+                            replies.remove(comment.id)
+                        } else {
+                            replies[comment.id] = null
+                            scope.launch { replies[comment.id] = loadReplies(comment.id) }
+                        }
+                    },
+                    modifier = Modifier.padding(start = 52.dp),
+                ) {
+                    Text(if (open) "Hide replies" else "${comment.replyCount} ${if (comment.replyCount == 1) "reply" else "replies"}")
+                }
+                if (open) {
+                    val result = replies[comment.id]
+                    Column(Modifier.padding(start = 40.dp)) {
+                        when {
+                            result == null -> Box(Modifier.fillMaxWidth().padding(8.dp), contentAlignment = Alignment.Center) {
+                                CircularProgressIndicator(Modifier.size(24.dp))
+                            }
+                            result.isFailure -> Text(
+                                result.exceptionOrNull()?.message ?: "Couldn't load replies.",
+                                style = MaterialTheme.typography.bodySmall,
+                                modifier = Modifier.padding(12.dp),
+                            )
+                            else -> result.getOrNull().orEmpty().forEach { CommentRow(it, onAuthorClick, small = true) }
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 @Composable
-private fun CommentRow(comment: Comment) {
+private fun CommentRow(comment: Comment, onAuthorClick: (String) -> Unit, small: Boolean = false) {
+    val authorModifier = comment.authorChannelId?.let { id -> Modifier.clickable { onAuthorClick(id) } } ?: Modifier
     Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
         AsyncImage(
             model = comment.authorImageUrl,
             contentDescription = null,
-            modifier = Modifier.size(32.dp).clip(CircleShape).background(Color.DarkGray),
+            modifier = Modifier
+                .size(if (small) 24.dp else 32.dp)
+                .clip(CircleShape)
+                .background(Color.DarkGray)
+                .then(authorModifier),
         )
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
@@ -189,17 +344,15 @@ private fun CommentRow(comment: Comment) {
                 "${comment.author} · ${formatAge(comment.publishedAt)}",
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = authorModifier,
             )
             Text(comment.text, style = MaterialTheme.typography.bodyMedium)
-            val extras = listOfNotNull(
-                comment.likeCount.takeIf { it > 0 }?.let { "$it likes" },
-                comment.replyCount.takeIf { it > 0 }?.let { "$it replies" },
-            )
-            if (extras.isNotEmpty()) {
+            if (comment.likeCount > 0) {
                 Text(
-                    extras.joinToString(" · "),
+                    "👍 ${formatCompact(comment.likeCount)}",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 2.dp),
                 )
             }
         }

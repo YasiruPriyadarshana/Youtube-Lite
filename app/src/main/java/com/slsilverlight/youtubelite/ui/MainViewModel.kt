@@ -7,6 +7,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.slsilverlight.youtubelite.auth.GoogleAuth
 import com.slsilverlight.youtubelite.data.AppSettings
+import com.slsilverlight.youtubelite.data.Channel
 import com.slsilverlight.youtubelite.data.Comment
 import com.slsilverlight.youtubelite.data.HistoryStore
 import com.slsilverlight.youtubelite.data.Playlist
@@ -33,6 +34,12 @@ sealed interface AuthState {
     data class SignedOut(val consent: PendingIntent? = null, val error: String? = null) : AuthState
     data object SignedIn : AuthState
 }
+
+data class ChannelPageState(
+    val channelId: String? = null,
+    val channel: Channel? = null,
+    val videos: FeedState = FeedState(),
+)
 
 data class PlaylistsState(
     val playlists: List<Playlist> = emptyList(),
@@ -123,8 +130,44 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun refreshHome() = load(_home) { repo.homeFeed(currentShowShorts()) }
 
     /** Comments for the player screen; null means comments are turned off for the video. */
-    suspend fun comments(videoId: String): Result<List<Comment>?> = try {
-        Result.success(repo.comments(videoId))
+    suspend fun comments(videoId: String): Result<List<Comment>?> = friendly { repo.comments(videoId) }
+
+    suspend fun replies(commentId: String): Result<List<Comment>> = friendly { repo.replies(commentId) }
+
+    private val channelCache = mutableMapOf<String, Channel>()
+
+    /** Channel name, avatar and subscriber count, cached for the session. */
+    suspend fun channelInfo(channelId: String): Channel? =
+        channelCache[channelId] ?: friendly { repo.channel(channelId) }.getOrNull()?.also { channelCache[channelId] = it }
+
+    private val _channelPage = MutableStateFlow(ChannelPageState())
+    val channelPage: StateFlow<ChannelPageState> = _channelPage.asStateFlow()
+
+    fun openChannel(channelId: String) {
+        if (_channelPage.value.channelId == channelId && _channelPage.value.videos.loaded) return
+        _channelPage.value = ChannelPageState(channelId = channelId, videos = FeedState(loading = true))
+        viewModelScope.launch {
+            val channel = channelInfo(channelId)
+            _channelPage.update { if (it.channelId == channelId) it.copy(channel = channel) else it }
+        }
+        refreshChannelVideos()
+    }
+
+    fun refreshChannelVideos() {
+        val channelId = _channelPage.value.channelId ?: return
+        viewModelScope.launch {
+            _channelPage.update { it.copy(videos = it.videos.copy(loading = true, error = null)) }
+            val result = runCatching { repo.channelVideos(channelId, currentShowShorts()) }
+            val feed = result.fold(
+                onSuccess = { FeedState(videos = it, loaded = true) },
+                onFailure = { FeedState(error = friendlyError(it), loaded = true) },
+            )
+            _channelPage.update { if (it.channelId == channelId) it.copy(videos = feed) else it }
+        }
+    }
+
+    private suspend fun <T> friendly(block: suspend () -> T): Result<T> = try {
+        Result.success(block())
     } catch (e: CancellationException) {
         throw e
     } catch (e: Exception) {

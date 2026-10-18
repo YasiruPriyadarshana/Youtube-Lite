@@ -419,19 +419,19 @@ private fun HomeChips(selected: String, favourites: List<String>, onSelect: (Str
         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        item(key = HOME_FOR_YOU) {
-            FilterChip(
-                selected = selected == HOME_FOR_YOU,
-                onClick = { onSelect(HOME_FOR_YOU) },
-                label = { Text("For you") },
-            )
-        }
         // Like YouTube, Trending is just a flame icon.
         item(key = HOME_TRENDING) {
             FilterChip(
                 selected = selected == HOME_TRENDING,
                 onClick = { onSelect(HOME_TRENDING) },
                 label = { Icon(Icons.Filled.Whatshot, contentDescription = "Trending", modifier = Modifier.size(18.dp)) },
+            )
+        }
+        item(key = HOME_FOR_YOU) {
+            FilterChip(
+                selected = selected == HOME_FOR_YOU,
+                onClick = { onSelect(HOME_FOR_YOU) },
+                label = { Text("For you") },
             )
         }
         items(categories, key = { it }) { id ->

@@ -56,27 +56,33 @@ class YouTubeRepository(context: Context, tokenProvider: () -> String?) {
     }
 
     /** Latest uploads from every channel the signed-in user subscribes to, newest first. */
-    suspend fun subscriptionFeed(showShorts: Boolean): List<Video> = coroutineScope {
-        val channelIds = allSubscribedChannelIds()
+    suspend fun subscriptionFeed(showShorts: Boolean): SubscriptionFeed = coroutineScope {
+        val channels = allSubscribedChannels()
+        val channelIds = channels.map { it.id }
         val limit = Semaphore(8)
 
         // Each channel's uploads playlist is its id with "UC" swapped for "UU". The "UULF"
         // playlist holds only long-form uploads, which is how Shorts are left out precisely.
-        val uploads = channelIds.map { channelId ->
+        val uploadsByChannel = channelIds.map { channelId ->
             async {
-                limit.withPermit { latestUploads(channelId.removePrefix("UC"), showShorts) }
+                channelId to limit.withPermit { latestUploads(channelId.removePrefix("UC"), showShorts) }
             }
-        }.awaitAll().flatten()
+        }.awaitAll().toMap()
+        val uploads = uploadsByChannel.values.flatten()
 
         val newest = uploads
             .sortedByDescending { it.publishedAt }
             .take(MAX_FEED_VIDEOS)
         val needsDurationCheck = newest.filter { it.needsShortsCheck }.map { it.videoId }.toSet()
 
-        videoDetails(newest.map { it.videoId })
+        val videos = videoDetails(newest.map { it.videoId })
             .distinctBy { it.id }
             .filterNot { it.id in needsDurationCheck && it.isShort }
             .sortedByDescending { it.publishedAt }
+
+        // Like the YouTube app, channels that uploaded most recently come first.
+        val latest = uploadsByChannel.mapValues { (_, list) -> list.maxOfOrNull { it.publishedAt } ?: Instant.EPOCH }
+        SubscriptionFeed(videos, channels.sortedByDescending { latest[it.id] ?: Instant.EPOCH })
     }
 
     val hasApiKey: Boolean get() = BuildConfig.YOUTUBE_API_KEY.isNotBlank()
@@ -230,15 +236,20 @@ class YouTubeRepository(context: Context, tokenProvider: () -> String?) {
         }
     }
 
-    private suspend fun allSubscribedChannelIds(): List<String> {
-        val ids = mutableListOf<String>()
+    private suspend fun allSubscribedChannels(): List<SubscribedChannel> {
+        val channels = mutableListOf<SubscribedChannel>()
         var pageToken: String? = null
         do {
             val page = api.mySubscriptions(pageToken = pageToken)
-            ids += page.items.map { it.snippet.resourceId.channelId }.filter { it.isNotEmpty() }
+            channels += page.items.mapNotNull { item ->
+                val s = item.snippet
+                s.resourceId.channelId.takeIf { it.isNotEmpty() }?.let { id ->
+                    SubscribedChannel(id, s.title, s.thumbnails?.medium?.url ?: s.thumbnails?.high?.url)
+                }
+            }
             pageToken = page.nextPageToken
-        } while (pageToken != null && ids.size < MAX_CHANNELS)
-        return ids
+        } while (pageToken != null && channels.size < MAX_CHANNELS)
+        return channels
     }
 
     private suspend fun latestUploads(channelSuffix: String, showShorts: Boolean): List<Upload> {

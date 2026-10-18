@@ -15,6 +15,7 @@ import com.slsilverlight.youtubelite.data.Playlist
 import com.slsilverlight.youtubelite.data.Rating
 import com.slsilverlight.youtubelite.data.SearchSuggestions
 import com.slsilverlight.youtubelite.data.SettingsStore
+import com.slsilverlight.youtubelite.data.SubscribedChannel
 import com.slsilverlight.youtubelite.data.VIDEO_CATEGORY_NAMES
 import com.slsilverlight.youtubelite.data.Video
 import com.slsilverlight.youtubelite.data.YouTubeRepository
@@ -78,6 +79,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val _subscriptions = MutableStateFlow(FeedState())
     val subscriptions: StateFlow<FeedState> = _subscriptions.asStateFlow()
 
+    /** The channel row on Subscriptions, newest uploader first. */
+    private val _subscribedChannels = MutableStateFlow<List<SubscribedChannel>>(emptyList())
+    val subscribedChannels: StateFlow<List<SubscribedChannel>> = _subscribedChannels.asStateFlow()
+
+    /** The channel picked in that row, or null for All. */
+    private val _selectedSubscription = MutableStateFlow<String?>(null)
+    val selectedSubscription: StateFlow<String?> = _selectedSubscription.asStateFlow()
+
+    private val _subscriptionChannelFeed = MutableStateFlow(FeedState())
+    val subscriptionChannelFeed: StateFlow<FeedState> = _subscriptionChannelFeed.asStateFlow()
+
     private val _home = MutableStateFlow(FeedState())
     val home: StateFlow<FeedState> = _home.asStateFlow()
 
@@ -123,6 +135,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val token = accessToken
         accessToken = null
         _subscriptions.value = FeedState()
+        _subscribedChannels.value = emptyList()
+        _selectedSubscription.value = null
+        _subscriptionChannelFeed.value = FeedState()
         _playlists.value = PlaylistsState()
         _libraryList.value = FeedState()
         viewModelScope.launch {
@@ -132,7 +147,26 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun refreshSubscriptions() = load(_subscriptions) { repo.subscriptionFeed(currentShowShorts()) }
+    fun refreshSubscriptions() {
+        load(_subscriptions) {
+            val feed = repo.subscriptionFeed(currentShowShorts())
+            _subscribedChannels.value = feed.channels
+            feed.videos
+        }
+        if (_selectedSubscription.value != null) refreshSubscriptionChannel()
+    }
+
+    fun selectSubscription(channelId: String?) {
+        if (channelId == _selectedSubscription.value) return
+        _selectedSubscription.value = channelId
+        _subscriptionChannelFeed.value = FeedState(loading = channelId != null)
+        if (channelId != null) refreshSubscriptionChannel()
+    }
+
+    private fun refreshSubscriptionChannel() {
+        val channelId = _selectedSubscription.value ?: return
+        load(_subscriptionChannelFeed) { repo.channelVideos(channelId, currentShowShorts()) }
+    }
 
     /** The chip selected on Home: [HOME_FOR_YOU], [HOME_TRENDING] or a category id. */
     private val _homeFilter = MutableStateFlow(HOME_FOR_YOU)

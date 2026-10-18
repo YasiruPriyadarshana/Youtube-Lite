@@ -74,6 +74,12 @@ data class Channel(
     val videoCount: Long?,
 )
 
+/** A channel the user subscribes to, for the row along the top of Subscriptions. */
+data class SubscribedChannel(val id: String, val title: String, val avatarUrl: String?)
+
+/** The Subscriptions tab: newest videos, plus the channels with the newest uploads first. */
+data class SubscriptionFeed(val videos: List<Video>, val channels: List<SubscribedChannel>)
+
 enum class Rating(val apiValue: String) {
     Like("like"), Dislike("dislike"), None("none");
 

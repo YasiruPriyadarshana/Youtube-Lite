@@ -184,12 +184,26 @@ private fun MainScaffold(viewModel: MainViewModel, settings: AppSettings) {
                         CircularProgressIndicator()
                     }
                     is AuthState.SignedOut -> SignInPanel(state, viewModel, "Sign in with your Google account to see videos from your subscriptions.")
-                    AuthState.SignedIn -> FeedScreen(
-                        state = subscriptions,
-                        emptyMessage = "No recent videos from your subscriptions.",
-                        onRefresh = viewModel::refreshSubscriptions,
-                        onVideoClick = { navController.navigate("player/${it.id}") },
-                    )
+                    AuthState.SignedIn -> {
+                        val channels by viewModel.subscribedChannels.collectAsStateWithLifecycle()
+                        val selected by viewModel.selectedSubscription.collectAsStateWithLifecycle()
+                        val channelFeed by viewModel.subscriptionChannelFeed.collectAsStateWithLifecycle()
+                        FeedScreen(
+                            state = if (selected == null) subscriptions else channelFeed,
+                            emptyMessage = if (selected == null) "No recent videos from your subscriptions."
+                                else "This channel has no videos yet.",
+                            onRefresh = { viewModel.refreshSubscriptions() },
+                            onVideoClick = { navController.navigate("player/${it.id}") },
+                            header = {
+                                SubscriptionsHeader(
+                                    channels = channels,
+                                    selected = selected,
+                                    onSelect = { viewModel.selectSubscription(it) },
+                                    onOpenChannel = { navController.navigate("channel/$it") },
+                                )
+                            },
+                        )
+                    }
                 }
             }
             composable(Tab.Library.route) {

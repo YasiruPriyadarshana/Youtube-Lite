@@ -137,7 +137,11 @@ data class ListResponse<T>(
 data class SubscriptionItem(val snippet: SubscriptionSnippet)
 
 @Serializable
-data class SubscriptionSnippet(val title: String = "", val resourceId: ResourceId)
+data class SubscriptionSnippet(
+    val title: String = "",
+    val resourceId: ResourceId,
+    val thumbnails: Thumbnails? = null,
+)
 
 @Serializable
 data class ResourceId(val channelId: String = "")

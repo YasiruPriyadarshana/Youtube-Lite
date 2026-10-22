@@ -241,7 +241,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     val isSignedIn: Boolean get() = _authState.value == AuthState.SignedIn
 
-    /** Your like/dislike on a video, or null when signed out or it couldn't be read. */
+    /** Your like/dislike on a video, or null when signed out, or it couldn't be read. */
     suspend fun rating(videoId: String): Rating? =
         if (!isSignedIn) null else friendly { withFreshTokenOn401 { repo.rating(videoId) } }.getOrNull()
 
@@ -332,8 +332,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun removeRecentSearch(query: String) = viewModelScope.launch { searchSuggestions.removeRecent(query) }
 
-    /** The Shorts the Shorts player swipes through, and where it starts. */
-    private val _shorts = MutableStateFlow<Pair<List<Video>, Int>>(emptyList<Video>() to 0)
+    /** The Shorts player swipes through, and where it starts. */
+    private val _shorts = MutableStateFlow(emptyList<Video>() to 0)
     val shorts: StateFlow<Pair<List<Video>, Int>> = _shorts.asStateFlow()
 
     fun openShorts(shorts: List<Video>, start: Video) {
